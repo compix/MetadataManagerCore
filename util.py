@@ -7,6 +7,6 @@ def timeit(f):
         ts = time()
         result = f(*args, **kw)
         te = time()
-        print('func:%r args:[%r, %r] took: %0.4fms' % (f.__name__, args, kw, te-ts))
+        print('func:%r args:[%r, %r] took: %0.0fms' % (f.__name__, args, kw, (te-ts) * 1000.0))
         return result
     return wrap
