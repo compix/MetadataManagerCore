@@ -11,3 +11,6 @@ systemKeys = ["_id", systemIDKey, systemVersionKey]
 
 collectionsMD = "collectionsMD"
 hiddenCollections = set([collectionsMD])
+
+COLLECTION_MD_DISPLAY_NAME_IDX = 0
+COLLECTION_MD_KEY_IDX = 1
