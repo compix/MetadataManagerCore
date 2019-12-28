@@ -14,3 +14,5 @@ hiddenCollections = set([collectionsMD])
 
 COLLECTION_MD_DISPLAY_NAME_IDX = 0
 COLLECTION_MD_KEY_IDX = 1
+
+OLD_VERSIONS_COLLECTION_SUFFIX = "_old_versions"

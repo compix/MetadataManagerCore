@@ -1,6 +1,7 @@
 import pymongo
 from MetadataManagerCore import Keys
 from bson import Code
+from MetadataManagerCore.DocumentModification import DocumentOperation
 
 class MongoDBManager:
     def __init__(self, host, databaseName):
@@ -66,3 +67,8 @@ class MongoDBManager:
         keys = [v for v in result.distinct('_id')]
         self.db.drop_collection(tempResultCollection)
         return keys
+
+    def insertOrModifyDocument(self, collectionName, sid, dataDict):
+        op = DocumentOperation(self.db, collectionName, sid, dataDict)
+
+        op.applyOperation()

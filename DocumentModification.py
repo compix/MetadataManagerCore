@@ -12,14 +12,15 @@ class DocumentOperation:
     If a document with the given sid exists a new version is created with the specified data defined in a dictionary.
     If it doesn't exist a new document is inserted. Both operations must be applied with applyOperation().
     """
-    def __init__(self, collection, sid, dataDict):
+    def __init__(self, database, collectionName, sid, dataDict):
         self.sid = sid
-        self.collection = collection
+        self.collection = database[collectionName]
+        self.versionCollection = database[collectionName + Keys.OLD_VERSIONS_COLLECTION_SUFFIX]
         self.dataDict = dataDict
         self.version = 0
-        newestDoc = self.getNewestDocument()
-        if newestDoc != None:
-            self.version = newestDoc[Keys.systemVersionKey]
+        currentDocument = self.getNewestDocument()
+        if currentDocument != None:
+            self.version = currentDocument[Keys.systemVersionKey]
 
     def applyOperation(self):
         """
@@ -27,12 +28,16 @@ class DocumentOperation:
         there was a merge conflict and thus DocOpResult.MergeConflict is returned.
         """
         # Get the newest version and check if it matches the expected version
-        newestDoc = self.getNewestDocument()
-        if newestDoc != None:
-            if newestDoc[Keys.systemVersionKey] == self.version:
+        currentDocument = self.getNewestDocument()
+        if currentDocument != None:
+            if currentDocument[Keys.systemVersionKey] == self.version:
+                # Move old version to versioning collection:
+                self.versionCollection.insert_one(currentDocument)
+                self.collection.delete_one({'_id':(self.sid + str(self.version))})
+
                 # Apply modifications:
-                newDict = newestDoc.to_mongo()
-                for key, val in self.dataDict:
+                newDict = currentDocument
+                for key, val in self.dataDict.items():
                     newDict[key] = val
 
                 newVersion = self.version + 1
@@ -51,11 +56,12 @@ class DocumentOperation:
 
         # Note: A race-condition is possible. Two dicts with the same _id might be inserted which raises an error.
         try:
-            self.collection.insert_one({"_id": self.sid + newVersion}, newDict)
+            newDict['_id'] = self.sid + str(newVersion)
+            self.collection.insert_one(newDict)
             return DocOpResult.Successful
         except pymongo.errors.PyMongoError as e:
             print(str(e))
             return DocOpResult.MergeConflict
                 
     def getNewestDocument(self):
-        return self.collection.find_one({Keys.systemIDKey:self.sid}, sort=[(Keys.systemVersionKey, pymongo.DESCENDING)])
+        return self.collection.find_one({Keys.systemIDKey:self.sid})
