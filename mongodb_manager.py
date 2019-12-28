@@ -6,20 +6,21 @@ class MongoDBManager:
     def __init__(self, host, databaseName):
         self.host = host
         self.databaseName = databaseName
-        self.client = pymongo.MongoClient(host)
-        self.db = self.client[databaseName]
+        self.db = None
+
+    def connect(self):
+        try:
+            self.client = pymongo.MongoClient(self.host)
+            self.db = self.client[self.databaseName]
+        except Exception as e:
+            print(f"Failed to connect: {str(e)}")
 
     # entry: dictionary
     def insertOne(self, collectionName, entry : dict):
         self.db[collectionName].insert_one(entry)
 
     def getCollectionNames(self):
-        return self.db.list_collection_names()
-
-    def insertExampleEntries(self):
-        self.insertOne("test", { "name": "John", "address": "Highway 37" })
-        self.insertOne("test", { "name": "Bob", "address": "Highway 37" })
-        self.insertOne("test", { "name": "Kevin", "address": "Highway 35" })
+        return self.db.list_collection_names() if self.db != None else []
 
     def getVisibleCollectionNames(self):
         for cn in self.getCollectionNames():
