@@ -2,6 +2,7 @@ import pymongo
 from MetadataManagerCore import Keys
 from bson import Code
 from MetadataManagerCore.DocumentModification import DocumentOperation
+import numpy as np
 
 class MongoDBManager:
     def __init__(self, host, databaseName):
@@ -68,7 +69,29 @@ class MongoDBManager:
         self.db.drop_collection(tempResultCollection)
         return keys
 
-    def insertOrModifyDocument(self, collectionName, sid, dataDict):
+    def insertOrModifyDocument(self, collectionName, sid, dataDict, checkForModifications):
+        """
+        If checkForModifications is true, the new document will be compared to the old document (if present). 
+        If the documents are identical the DB entry for the given sid won't be changed.
+        """
         op = DocumentOperation(self.db, collectionName, sid, dataDict)
 
-        op.applyOperation()
+        op.applyOperation(checkForModifications)
+
+    def getFilteredDocuments(self, collectionName, filterText, distinctionText=''):
+        collection = self.db[collectionName]
+        filtered = collection.find(filterText)
+        distinctKey = distinctionText
+        
+        if len(distinctKey) > 0:
+            distinctKeys = filtered.distinct(distinctKey)
+            distinctMap = dict(zip(distinctKeys, np.repeat(False, len(distinctKeys))))
+            for item in filtered:
+                val = item.get(distinctKey)
+                if val != None:
+                    if not distinctMap.get(val):
+                        distinctMap[val] = True
+                        yield item
+        else:
+            for item in filtered:
+                yield item

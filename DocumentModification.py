@@ -22,21 +22,39 @@ class DocumentOperation:
         if currentDocument != None:
             self.version = currentDocument[Keys.systemVersionKey]
 
-    def applyOperation(self):
+    def getId(self, version):
+        return self.sid + "_" + str(version)
+
+    def applyOperation(self, checkForModifications):
         """
         Applies the document operation. If the operation was successful DocOpResult.Successful is returned otherwise
         there was a merge conflict and thus DocOpResult.MergeConflict is returned.
+
+        If checkForModifications is true, the new document will be compared to the old document (if present). 
+        If the documents are identical the DB entry for the given sid won't be changed.
         """
         # Get the newest version and check if it matches the expected version
         currentDocument = self.getNewestDocument()
         if currentDocument != None:
             if currentDocument[Keys.systemVersionKey] == self.version:
+                newDict = currentDocument
+
+                # Do nothing if checkForModifications is true and the documents are identical.
+                if checkForModifications:
+                    allDataEntriesEqual = True
+                    for key, val in self.dataDict.items():
+                        if newDict[key] != val:
+                            allDataEntriesEqual = False
+                            break
+
+                    if allDataEntriesEqual:
+                        return DocOpResult.Successful
+                    
                 # Move old version to versioning collection:
                 self.versionCollection.insert_one(currentDocument)
-                self.collection.delete_one({'_id':(self.sid + str(self.version))})
+                self.collection.delete_one({'_id':(self.getId(self.version))})
 
                 # Apply modifications:
-                newDict = currentDocument
                 for key, val in self.dataDict.items():
                     newDict[key] = val
 
@@ -56,7 +74,7 @@ class DocumentOperation:
 
         # Note: A race-condition is possible. Two dicts with the same _id might be inserted which raises an error.
         try:
-            newDict['_id'] = self.sid + str(newVersion)
+            newDict['_id'] = self.getId(newVersion)
             self.collection.insert_one(newDict)
             return DocOpResult.Successful
         except pymongo.errors.PyMongoError as e:
