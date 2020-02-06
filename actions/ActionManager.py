@@ -10,7 +10,15 @@ class ActionManager(object):
 
         self.m_linkActionToCollectionEvent = Event()
         self.m_unlinkActionFromCollectionEvent = Event()
+        self.m_registerActionEvent = Event()
 
+    @property
+    def registerActionEvent(self) -> Event:
+        """
+        Expected argument: action
+        """
+        return self.m_registerActionEvent
+        
     @property
     def linkActionToCollectionEvent(self) -> Event:
         """
@@ -47,6 +55,8 @@ class ActionManager(object):
         for collectionName, actionIds in self.collectionToActionsMap.items():
             if action.id in actionIds:
                 action.linkedCollections.append(collectionName)
+
+        self.m_registerActionEvent(action)
 
     def save(self, dbManager):
         collectionToActionMapAsJson = json.dumps(self.collectionToActionsMap)
