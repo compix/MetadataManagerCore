@@ -71,7 +71,11 @@ class ActionManager(object):
                 self.collectionToActionsMap = json.loads(collectionToActionMapAsJson)
 
     def unregisterAction(self, action):
-        self.actions = [a for a in self.actions if a.id != action.id]
+        if action != None:
+            self.unregisterActionId(action.id)
+
+    def unregisterActionId(self, actionId):
+        self.actions = [a for a in self.actions if a.id != actionId]
 
     def applyFilter(self, actions, filterString):
         filteredActions = []
@@ -121,4 +125,7 @@ class ActionManager(object):
         return self.applyFilter(actions, filterString)
 
     def isValidActionId(self, actionId):
-        return actionId in [action.id for action in self.actions]
+        return self.isActionIdRegistered(actionId)
+
+    def isActionIdRegistered(self, actionId):
+        return actionId in [action.id for action in self.actions] 
