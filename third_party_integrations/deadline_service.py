@@ -4,12 +4,13 @@ import os
 import subprocess
 import re
 from MetadataManagerCore.Event import Event
+import threading
 
 class DeadlineServiceInfo(object):
     def __init__(self):
         super().__init__()
 
-        self.deadlineCmdPath = ""
+        self.deadlineInstallPath = ""
         self.webserviceHost = ""
         self.webservicePort = 8082
         self.deadlineStandalonePythonPackagePath = ""
@@ -22,9 +23,14 @@ class DeadlineServiceInfo(object):
     def setDeadlineCmdPath(self, path):
         self.deadlineCmdPath = path
 
+    @property
+    def deadlineCmdPath(self):
+        return os.path.join(self.deadlineInstallPath, r"bin\deadlinecommand.exe")
+
 class DeadlineService(object):
     def __init__(self, info: DeadlineServiceInfo):
         super().__init__()
+        self.lock = threading.Lock()
 
         self.updateInfo(info)
         self.deadlineConnection = None
@@ -56,6 +62,8 @@ class DeadlineService(object):
         return output
 
     def updateInfo(self, info: DeadlineServiceInfo):
+        self.lock.acquire()
+
         self.info = info
 
         if self.info != None:
@@ -84,6 +92,8 @@ class DeadlineService(object):
                 self.runDeadlineCmd("About")
         else:
             self.info = DeadlineServiceInfo()
+
+        self.lock.release()
 
     """
     Returns the submitted job info as dictionary if the submission was successful otherwise an exception is thrown.
