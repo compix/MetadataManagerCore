@@ -35,12 +35,10 @@ class DeadlineService(object):
         self.updateInfo(info)
         self.deadlineConnection = None
         self.webserviceConnectionEstablished = False
-        self.msgLog = []
 
         self.messageUpdateEvent = Event()
 
     def printMsg(self, msg):
-        self.msgLog.append(msg)
         self.messageUpdateEvent(msg)
 
     def printCmdLineFallback(self):
@@ -98,13 +96,14 @@ class DeadlineService(object):
     """
     Returns the submitted job info as dictionary if the submission was successful otherwise an exception is thrown.
     """
-    def submitJob(self, jobInfoFilename, pluginInfoFilename, auxiliaryFilenames=[]):
-        self.printMsg(f"Submitting job {jobInfoFilename}...")
+    def submitJob(self, jobInfoFilename, pluginInfoFilename, auxiliaryFilenames=[], quiet=False):
+        if not quiet:
+            self.printMsg(f"Submitting job {jobInfoFilename}...")
 
         if self.webserviceConnectionEstablished:
             try:
                 job = self.deadlineConnection.Jobs.SubmitJobFiles(jobInfoFilename, pluginInfoFilename, aux=auxiliaryFilenames)
-                if job != None:
+                if job != None and not quiet:
                     self.printMsg(f"Successfully submitted job with id {job['_id']}")
                 return job
             except Exception as e:
