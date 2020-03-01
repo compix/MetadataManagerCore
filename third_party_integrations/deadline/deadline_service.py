@@ -1,10 +1,12 @@
-
 import sys
 import os
 import subprocess
 import re
 from MetadataManagerCore.Event import Event
 import threading
+import tempfile
+import distutils
+from distutils import dir_util
 
 class DeadlineServiceInfo(object):
     def __init__(self):
@@ -14,6 +16,7 @@ class DeadlineServiceInfo(object):
         self.webserviceHost = ""
         self.webservicePort = 8082
         self.deadlineStandalonePythonPackagePath = ""
+        self.deadlineRepositoryLocation = r"C:\DeadlineRepository10"
 
     def initWebservice(self, deadlineStandalonePythonPackagePath, hostName, port=8082):
         self.deadlineStandalonePythonPackagePath = deadlineStandalonePythonPackagePath
@@ -26,6 +29,18 @@ class DeadlineServiceInfo(object):
     @property
     def deadlineCmdPath(self):
         return os.path.join(self.deadlineInstallPath, r"bin\deadlinecommand.exe")
+
+    @property
+    def deadlineCustomPluginsPath(self):
+        return os.path.join(self.deadlineRepositoryLocation, r"custom\plugins")
+
+def threadLocked(func):
+    def wrapper(*args, **kwargs):
+        args[0].lock.acquire()
+        ret = func(*args, **kwargs)
+        args[0].lock.release()
+        return ret
+    return wrapper
 
 class DeadlineService(object):
     def __init__(self, info: DeadlineServiceInfo):
@@ -59,9 +74,8 @@ class DeadlineService(object):
 
         return output
 
+    @threadLocked
     def updateInfo(self, info: DeadlineServiceInfo):
-        self.lock.acquire()
-
         self.info = info
 
         if self.info != None:
@@ -91,38 +105,96 @@ class DeadlineService(object):
         else:
             self.info = DeadlineServiceInfo()
 
-        self.lock.release()
-
     """
-    Returns the submitted job info as dictionary if the submission was successful otherwise an exception is thrown.
+    Returns the submitted job if the submission was successful otherwise an exception is thrown.
+    If returnJobIdOnly is false the job is returned as a dictionary, otherwise only the job id is returned.
     """
-    def submitJob(self, jobInfoFilename, pluginInfoFilename, auxiliaryFilenames=[], quiet=False):
+    @threadLocked
+    def submitJobFiles(self, jobInfoFilename, pluginInfoFilename, auxiliaryFilenames=[], quiet=False, returnJobIdOnly=False):
         if not quiet:
             self.printMsg(f"Submitting job {jobInfoFilename}...")
 
         if self.webserviceConnectionEstablished:
             try:
-                job = self.deadlineConnection.Jobs.SubmitJobFiles(jobInfoFilename, pluginInfoFilename, aux=auxiliaryFilenames)
+                job = self.deadlineConnection.Jobs.SubmitJobFiles(jobInfoFilename, pluginInfoFilename, aux=auxiliaryFilenames, idOnly=returnJobIdOnly)
                 if job != None and not quiet:
                     self.printMsg(f"Successfully submitted job with id {job['_id']}")
-                return job
+                return job['_id']
             except Exception as e:
                 self.printMsg(str(e))
 
-        self.printCmdLineFallback()
+                if not quiet:
+                    self.printCmdLineFallback()
+        
         auxFilesStr = " ".join([f"\"{os.path.normpath(auxFile)}\"" for auxFile in auxiliaryFilenames])
         cmd = f"\"{os.path.normpath(jobInfoFilename)}\" \"{os.path.normpath(pluginInfoFilename)}\" {auxFilesStr}"
         cmdOutput = self.runDeadlineCmd(cmd)
 
         if isinstance(cmdOutput, str):
-            errorMatch = re.search('Error:(.*)\n', cmdOutput)
+            errorMatch = re.search('Error:(.*)', cmdOutput)
 
             if not errorMatch:
-                #resultMatch = re.search('Result=(.*)\n', cmdOutput)
                 jobIDMatch = re.search('JobID=(.*)\n', cmdOutput)
 
                 if jobIDMatch != None:
-                    return {'_id':jobIDMatch.group(1)}
+                    jobId = jobIDMatch.group(1).replace('\r','')
+                    return jobId if returnJobIdOnly else {'_id':jobId}
 
         return None
+
+    """
+    Returns the submitted job as dictionary if the submission was successful otherwise an exception is thrown.
+    """
+    def submitJob(self, jobInfoDict, pluginInfoDict, auxiliaryFilenames=[], quiet=False, returnJobIdOnly=False):
+        jobInfoFilename = tempfile.mktemp(suffix=".txt")
+        pluginInfoFilename = tempfile.mktemp(suffix=".txt")
+
+        with open(jobInfoFilename, mode='w+') as f:
+            for key, val in jobInfoDict.items():
+                f.write(f"{str(key)}={str(val)}\n")
+
+        with open(pluginInfoFilename, mode='w+') as f:
+            f.write("\n")
+            for key, val in pluginInfoDict.items():
+                f.write(f"{str(key)}={str(val)}\n")         
+
+        ret = self.submitJobFiles(jobInfoFilename, pluginInfoFilename, auxiliaryFilenames=auxiliaryFilenames, quiet=quiet, returnJobIdOnly=returnJobIdOnly)
+
+        os.remove(jobInfoFilename)
+        os.remove(pluginInfoFilename)
+
+        return ret
+
+    def verifyDeadlineRepository(self):
+        if not os.path.isdir(self.info.deadlineRepositoryLocation):
+            self.printMsg(f"Could not find the deadline location {self.info.deadlineRepositoryLocation}. Please specify the deadline repository location.")
+            return False
+
+        if not os.path.isdir(self.info.deadlineCustomPluginsPath):
+            self.printMsg(f"Could not find the custom plugins location {self.info.deadlineCustomPluginsPath}.")
+            return False
+
+        return True
+
+    def installDeadlinePlugin(self, pluginLocation):
+        if not self.verifyDeadlineRepository():
+            return False
+
+        if os.path.isdir(pluginLocation):
+            try:
+                distutils.dir_util.copy_tree(pluginLocation, os.path.join(self.info.deadlineCustomPluginsPath, os.path.basename(pluginLocation)))
+                return True
+            except Exception as e:
+                self.printMsg(str(e))
+                return False
+        else:
+            self.printMsg(f"Could not find the given plugin location: {pluginLocation}")
         
+        return False
+
+    """
+    Installs a plugin that can be identified by the given name in the third_party_integrations/deadline folder.
+    """
+    def installKnownDeadlinePlugin(self, pluginName):
+        curLocation = os.path.abspath(os.path.dirname(__file__))
+        return self.installDeadlinePlugin(os.path.join(curLocation, pluginName))

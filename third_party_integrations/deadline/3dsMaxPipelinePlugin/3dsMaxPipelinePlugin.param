@@ -1,0 +1,31 @@
+[About]
+Type=label
+Label=About
+Category=About Plugin
+CategoryOrder=-1
+Default=The 3ds Max Pipeline Plugin is used for automated scene construction and rendering submission.
+Description=Not configurable
+
+[3dsMaxExe2017]
+Type=filename
+Label=3ds Max 2017 Executable
+Default=C:\Program Files\Autodesk\3ds Max 2017\3dsmax.exe
+Description=The path to the 3ds max exe.
+
+[3dsMaxExe2018]
+Type=filename
+Label=3ds Max 2018 Executable
+Default=C:\Program Files\Autodesk\3ds Max 2018\3dsmax.exe
+Description=The path to the 3ds max exe.
+
+[3dsMaxExe2019]
+Type=filename
+Label=3ds Max 2019 Executable
+Default=C:\Program Files\Autodesk\3ds Max 2019\3dsmax.exe
+Description=The path to the 3ds max exe.
+
+[3dsMaxExe2020]
+Type=filename
+Label=3ds Max 2020 Executable
+Default=C:\Program Files\Autodesk\3ds Max 2020\3dsmax.exe
+Description=The path to the 3ds max exe.
