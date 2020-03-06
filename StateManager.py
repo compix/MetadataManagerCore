@@ -1,12 +1,12 @@
 from MetadataManagerCore.mongodb_manager import MongoDBManager
-from MetadataManagerCore.actions.ActionManager import ActionManager
+from MetadataManagerCore.actions.DocumentActionManager import DocumentActionManager
 from MetadataManagerCore import Keys
 import json
 
 class StateManager(object):
     def __init__(self, dbManager: MongoDBManager):
         self.dbManager = dbManager
-        self.actionManager = ActionManager()
+        self.actionManager = DocumentActionManager()
 
     def saveState(self):
         self.actionManager.save(self.dbManager)

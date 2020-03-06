@@ -3,7 +3,7 @@ from MetadataManagerCore.Event import Event
 from MetadataManagerCore import Keys
 import json
 
-class ActionManager(object):
+class DocumentActionManager(object):
     def __init__(self):
         self.actions = []
         self.collectionToActionsMap = dict()
