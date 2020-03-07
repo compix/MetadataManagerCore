@@ -19,3 +19,5 @@ OLD_VERSIONS_COLLECTION_SUFFIX = "_old_versions"
 
 STATE_COLLECTION = "state"
 ACTION_MANAGER_ID = "action_manager"
+ENVIRONMENT_MANAGER_ID = "environment_manager"
+ARCHIVED_ENVIRONMENTS_ID = "archived_environments"
