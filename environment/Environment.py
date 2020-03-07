@@ -15,21 +15,11 @@ class Environment(object):
         self.displayName = displayName
 
     def getStateDict(self):
-        #settingsAsJson = json.dumps(self.settingsDict)
         return {"settings": self.settingsDict, "display_name": self.displayName}
 
-    #def save(self, dbManager):
-        #dbManager.db[Keys.STATE_COLLECTION].replace_one({"_id": self.uniqueEnvironmentId}, {"settings": settingsAsJson, "display_name": self.displayName}, upsert=True)
-
     def load(self, stateDict):
-        #envState = dbManager.db[Keys.STATE_COLLECTION].find_one({"_id": self.uniqueEnvironmentId})
-
         if stateDict != None:
             self.settingsDict = stateDict.get('settings')
-           # settingsAsJson = stateDict.get('settings')
-            #if settingsAsJson != None:
-                #self.settingsDict = json.loads(settingsAsJson)
-
             self.setDisplayName(stateDict.get("display_name"))
 
     def evaluateSettingsValue(self, value):
