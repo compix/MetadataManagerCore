@@ -1,18 +1,19 @@
-class DocumentAction(object):
-    def __init__(self):
-        self.linkedCollections = []
+from MetadataManagerCore.actions.Action import Action
+from MetadataManagerCore.actions.ActionType import ActionType
 
-    def execute(self, document):
-        pass
+class DocumentAction(Action):
+    def __init__(self):
+        super().__init__()
+
+        self.linkedCollections = []
 
     @property
     def id(self):
         return self.__class__.__name__
+        
+    def execute(self, document):
+        pass
 
     @property
-    def filterTags(self):
-        return []
-
-    @property
-    def category(self):
-        return "Default"
+    def actionType(self):
+        return ActionType.DocumentAction

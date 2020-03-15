@@ -1,9 +1,11 @@
 from MetadataManagerCore.actions.DocumentAction import DocumentAction
+from MetadataManagerCore.actions.Action import Action
+from MetadataManagerCore.actions.ActionType import ActionType
 from MetadataManagerCore.Event import Event
 from MetadataManagerCore import Keys
 import json
 
-class DocumentActionManager(object):
+class ActionManager(object):
     def __init__(self):
         self.actions = []
         self.collectionToActionsMap = dict()
@@ -89,7 +91,7 @@ class DocumentActionManager(object):
     def getActionsFiltered(self, filterString):
         return self.applyFilter(self.actions, filterString)
 
-    def getActionById(self, actionId) -> DocumentAction:
+    def getActionById(self, actionId) -> Action:
         actionsWithId = [a for a in self.actions if a.id == actionId]
         return actionsWithId[0] if len(actionsWithId) > 0 else None
 
@@ -128,4 +130,10 @@ class DocumentActionManager(object):
         return self.isActionIdRegistered(actionId)
 
     def isActionIdRegistered(self, actionId):
-        return actionId in [action.id for action in self.actions] 
+        return actionId in [action.id for action in self.actions]
+
+    def getGeneralActions(self):
+        return [action for action in self.actions if action.actionType == ActionType.GeneralAction]
+
+    def getDocumentActions(self):
+        return [action for action in self.actions if action.actionType == ActionType.DocumentAction]
