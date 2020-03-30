@@ -43,7 +43,7 @@ class DocumentOperation:
                 if checkForModifications:
                     allDataEntriesEqual = True
                     for key, val in self.dataDict.items():
-                        if newDict[key] != val:
+                        if not key in newDict or newDict[key] != val:
                             allDataEntriesEqual = False
                             break
 
