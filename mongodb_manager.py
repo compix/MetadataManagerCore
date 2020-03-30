@@ -11,11 +11,9 @@ class MongoDBManager:
         self.db = None
 
     def connect(self):
-        try:
-            self.client = pymongo.MongoClient(self.host)
-            self.db = self.client[self.databaseName]
-        except Exception as e:
-            print(f"Failed to connect: {str(e)}")
+        self.client = pymongo.MongoClient(self.host)
+        self.client.server_info()
+        self.db = self.client[self.databaseName]
 
     # entry: dictionary
     def insertOne(self, collectionName, entry : dict):
