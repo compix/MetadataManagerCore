@@ -111,7 +111,10 @@ class ActionManager(object):
 
     def unlinkActionFromCollection(self, actionId, collectionName):
         self.collectionToActionsMap[collectionName].remove(actionId)
-        self.getActionById(actionId).linkedCollections.remove(collectionName)
+
+        action = self.getActionById(actionId)
+        if action != None:
+            self.getActionById(actionId).linkedCollections.remove(collectionName)
 
         self.m_unlinkActionFromCollectionEvent(actionId, collectionName)
         
