@@ -131,7 +131,7 @@ class DeadlineService(object):
         cmd = f"\"{os.path.normpath(jobInfoFilename)}\" \"{os.path.normpath(pluginInfoFilename)}\" {auxFilesStr}"
 
         """
-        argsFile = tempfile.mkstemp(suffix="_deadline_args.txt")
+        argsFile = tempfile.mkstemp(suffix="_deadline_args.txt")[1]
 
         with open(argsFile, mode="w+") as f:
             f.write("-SubmitMultipleJobs\n-job\n")
@@ -165,8 +165,8 @@ class DeadlineService(object):
     Returns the submitted job as dictionary if the submission was successful otherwise an exception is thrown.
     """
     def submitJob(self, jobInfoDict, pluginInfoDict, auxiliaryFilenames=[], quiet=False, returnJobIdOnly=False):
-        jobInfoFilename = tempfile.mkstemp(suffix=".txt")
-        pluginInfoFilename = tempfile.mkstemp(suffix=".txt")
+        jobInfoFilename = tempfile.mkstemp(suffix=".txt")[1]
+        pluginInfoFilename = tempfile.mkstemp(suffix=".txt")[1]
 
         with open(jobInfoFilename, mode='w+') as f:
             for key, val in jobInfoDict.items():
