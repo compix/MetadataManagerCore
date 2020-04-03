@@ -177,7 +177,7 @@ class DeadlineService(object):
 
         pluginInfoFilenameHandle, pluginInfoFilename = tempfile.mkstemp(suffix=".txt")
         if not quiet:
-            self.printMsg(f"Created temp plugin info file: {jobInfoFilename}")
+            self.printMsg(f"Created temp plugin info file: {pluginInfoFilename}")
 
         with open(pluginInfoFilename, mode='w+') as f:
             f.write("\n")
