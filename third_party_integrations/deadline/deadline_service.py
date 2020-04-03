@@ -111,7 +111,10 @@ class DeadlineService(object):
     If returnJobIdOnly is false the job is returned as a dictionary, otherwise only the job id is returned.
     """
     @threadLocked
-    def submitJobFiles(self, jobInfoFilename, pluginInfoFilename, auxiliaryFilenames=[], quiet=False, returnJobIdOnly=False):
+    def submitJobFiles(self, jobInfoFilename, pluginInfoFilename, auxiliaryFilenames=None, quiet=False, returnJobIdOnly=False):
+        if auxiliaryFilenames == None:
+            auxiliaryFilenames = []
+            
         if not quiet:
             self.printMsg(f"Submitting job {jobInfoFilename} with plugin info {pluginInfoFilename}...")
 
@@ -164,7 +167,7 @@ class DeadlineService(object):
     """
     Returns the submitted job as dictionary if the submission was successful otherwise an exception is thrown.
     """
-    def submitJob(self, jobInfoDict, pluginInfoDict, auxiliaryFilenames=[], quiet=False, returnJobIdOnly=False):
+    def submitJob(self, jobInfoDict, pluginInfoDict, auxiliaryFilenames=None, quiet=False, returnJobIdOnly=False):
         jobInfoFilenameHandle, jobInfoFilename = tempfile.mkstemp(suffix=".txt")
         if not quiet:
             self.printMsg(f"Created temp job info file: {jobInfoFilename}")
