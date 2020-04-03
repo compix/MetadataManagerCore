@@ -165,17 +165,26 @@ class DeadlineService(object):
     Returns the submitted job as dictionary if the submission was successful otherwise an exception is thrown.
     """
     def submitJob(self, jobInfoDict, pluginInfoDict, auxiliaryFilenames=[], quiet=False, returnJobIdOnly=False):
-        jobInfoFilename = tempfile.mkstemp(suffix=".txt")[1]
-        pluginInfoFilename = tempfile.mkstemp(suffix=".txt")[1]
+        jobInfoFilenameHandle, jobInfoFilename = tempfile.mkstemp(suffix=".txt")
+        if not quiet:
+            self.printMsg(f"Created temp job info file: {jobInfoFilename}")
 
         with open(jobInfoFilename, mode='w+') as f:
             for key, val in jobInfoDict.items():
                 f.write(f"{str(key)}={str(val)}\n")
 
+        os.close(jobInfoFilenameHandle)
+
+        pluginInfoFilenameHandle, pluginInfoFilename = tempfile.mkstemp(suffix=".txt")
+        if not quiet:
+            self.printMsg(f"Created temp plugin info file: {jobInfoFilename}")
+
         with open(pluginInfoFilename, mode='w+') as f:
             f.write("\n")
             for key, val in pluginInfoDict.items():
-                f.write(f"{str(key)}={str(val)}\n")         
+                f.write(f"{str(key)}={str(val)}\n")
+
+        os.close(pluginInfoFilenameHandle)
 
         ret = self.submitJobFiles(jobInfoFilename, pluginInfoFilename, auxiliaryFilenames=auxiliaryFilenames, quiet=quiet, returnJobIdOnly=returnJobIdOnly)
 
