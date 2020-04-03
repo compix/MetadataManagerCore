@@ -7,6 +7,7 @@ import threading
 import tempfile
 import distutils
 from distutils import dir_util
+import shutil
 
 class DeadlineServiceInfo(object):
     def __init__(self):
@@ -112,7 +113,7 @@ class DeadlineService(object):
     @threadLocked
     def submitJobFiles(self, jobInfoFilename, pluginInfoFilename, auxiliaryFilenames=[], quiet=False, returnJobIdOnly=False):
         if not quiet:
-            self.printMsg(f"Submitting job {jobInfoFilename}...")
+            self.printMsg(f"Submitting job {jobInfoFilename} with plugin info {pluginInfoFilename}...")
 
         if self.webserviceConnectionEstablished:
             try:
@@ -128,7 +129,25 @@ class DeadlineService(object):
         
         auxFilesStr = " ".join([f"\"{os.path.normpath(auxFile)}\"" for auxFile in auxiliaryFilenames])
         cmd = f"\"{os.path.normpath(jobInfoFilename)}\" \"{os.path.normpath(pluginInfoFilename)}\" {auxFilesStr}"
+
+        """
+        argsFile = tempfile.mkstemp(suffix="_deadline_args.txt")
+
+        with open(argsFile, mode="w+") as f:
+            f.write("-SubmitMultipleJobs\n-job\n")
+            f.write(f"{os.path.normpath(jobInfoFilename)}\n")
+            f.write(f"{os.path.normpath(pluginInfoFilename)}\n")
+
+            for auxFile in auxiliaryFilenames:
+                f.write(f"\n{os.path.normpath(auxFile)}")
+        
+
+        cmd = f"\"{os.path.normpath(argsFile)}\""
+        """
+
         cmdOutput = self.runDeadlineCmd(cmd)
+        
+        #os.remove(argsFile)
 
         if isinstance(cmdOutput, str):
             errorMatch = re.search('Error:(.*)', cmdOutput)
@@ -146,8 +165,8 @@ class DeadlineService(object):
     Returns the submitted job as dictionary if the submission was successful otherwise an exception is thrown.
     """
     def submitJob(self, jobInfoDict, pluginInfoDict, auxiliaryFilenames=[], quiet=False, returnJobIdOnly=False):
-        jobInfoFilename = tempfile.mktemp(suffix=".txt")
-        pluginInfoFilename = tempfile.mktemp(suffix=".txt")
+        jobInfoFilename = tempfile.mkstemp(suffix=".txt")
+        pluginInfoFilename = tempfile.mkstemp(suffix=".txt")
 
         with open(jobInfoFilename, mode='w+') as f:
             for key, val in jobInfoDict.items():
