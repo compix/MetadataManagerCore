@@ -19,3 +19,7 @@ class Action(object):
     @property
     def category(self):
         return "Default"
+
+    @property
+    def runsOnMainThread(self):
+        return False
