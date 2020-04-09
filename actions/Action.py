@@ -13,6 +13,10 @@ class Action(object):
         return self.__class__.__name__
 
     @property
+    def displayName(self):
+        return self.id
+
+    @property
     def filterTags(self):
         return []
 
