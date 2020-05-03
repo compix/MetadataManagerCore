@@ -3,9 +3,12 @@ from MetadataManagerCore import Keys
 from bson import Code
 from MetadataManagerCore.DocumentModification import DocumentOperation
 import numpy as np
+import json
+import logging
 
 class MongoDBManager:
     def __init__(self, host, databaseName):
+        self.logger = logging.getLogger(__name__)
         self.host = host
         self.databaseName = databaseName
         self.db = None
@@ -76,13 +79,13 @@ class MongoDBManager:
 
         op.applyOperation(checkForModifications)
 
-    def getFilteredDocuments(self, collectionName, filterText, distinctionText=''):
+    def getFilteredDocuments(self, collectionName, documentsFilter : dict, distinctionText=''):
         collection = self.db[collectionName]
-        filtered = collection.find(filterText)
+        filtered = collection.find(documentsFilter)
         distinctKey = distinctionText
         
         if len(distinctKey) > 0:
-            distinctKeys = filtered.distinct(distinctKey)
+            distinctKeys = filtered.distinct(distinctKey if distinctKey != None else '')
             distinctMap = dict(zip(distinctKeys, np.repeat(False, len(distinctKeys))))
             for item in filtered:
                 val = item.get(distinctKey)
@@ -93,3 +96,14 @@ class MongoDBManager:
         else:
             for item in filtered:
                 yield item
+
+    def stringToFilter(self, filterString) -> dict:
+        try:
+            if len(filterString) == 0:
+                return {}
+            
+            filter_ = json.loads(filterString)
+            return filter_
+        except Exception as e:
+            self.logger.error(f"Failed to convert filter string {filterString} to a valid filter dictionary. Reason: {str(e)}")
+            return {"_id":"None"}
