@@ -2,12 +2,12 @@ import sys
 import os
 import subprocess
 import re
-from MetadataManagerCore.Event import Event
 import threading
 import tempfile
 import distutils
 from distutils import dir_util
 import shutil
+import logging
 
 class DeadlineServiceInfo(object):
     def __init__(self):
@@ -52,10 +52,10 @@ class DeadlineService(object):
         self.deadlineConnection = None
         self.webserviceConnectionEstablished = False
 
-        self.messageUpdateEvent = Event()
+        self.logger = logging.getLogger(__name__)
 
     def printMsg(self, msg):
-        self.messageUpdateEvent(msg)
+        self.logger.info(msg)
 
     def printCmdLineFallback(self):
         self.printMsg(f"\n\nTrying command line fallback with deadline command at path {self.info.deadlineCmdPath}...")
@@ -79,6 +79,11 @@ class DeadlineService(object):
     def updateInfo(self, info: DeadlineServiceInfo):
         self.info = info
 
+    @threadLocked
+    def connect(self):
+        """
+        Tries to connect to the deadline service.
+        """
         if self.info != None:
             self.webserviceConnectionEstablished = False
 
@@ -229,3 +234,28 @@ class DeadlineService(object):
     def installKnownDeadlinePlugin(self, pluginName):
         curLocation = os.path.abspath(os.path.dirname(__file__))
         return self.installDeadlinePlugin(os.path.join(curLocation, pluginName))
+
+    def save(self, settings, dbManager):
+        """
+        Serializes the state in settings and/or in the database.
+
+        input:
+            - settings: Must support settings.setValue(key: str, value)
+            - dbManager: MongoDBManager
+        """
+        settings.setValue("deadline_service", self.info.__dict__)
+
+    def load(self, settings, dbManager):
+        """
+        Loads the state from settings and/or the database.
+
+        input:
+            - settings: Must support settings.value(str)
+            - dbManager: MongoDBManager
+        """
+        infoDict = settings.value("deadline_service")
+
+        if infoDict != None:
+            info = DeadlineServiceInfo()
+            info.__dict__ = infoDict
+            self.updateInfo(info)

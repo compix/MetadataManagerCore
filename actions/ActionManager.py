@@ -4,9 +4,11 @@ from MetadataManagerCore.actions.ActionType import ActionType
 from MetadataManagerCore.Event import Event
 from MetadataManagerCore import Keys
 import json
+import logging
 
 class ActionManager(object):
     def __init__(self):
+        self.logger = logging.getLogger(__name__)
         self.actions = []
         self.collectionToActionsMap = dict()
 
@@ -47,9 +49,11 @@ class ActionManager(object):
         return [a.id for a in self.actions if a.category == category]
     
     def registerAction(self, action):
+        self.logger.debug(f"Registering action: {action.id}")
+
         for a in self.actions:
             if a.id == action.id:
-                print(f"Warning: Action {action.id} is already registered.")
+                self.logger.warning(f"Action {action.id} is already registered.")
                 return
                 
         self.actions.append(action)
@@ -60,11 +64,25 @@ class ActionManager(object):
 
         self.m_registerActionEvent(action)
 
-    def save(self, dbManager):
+    def save(self, settings, dbManager):
+        """
+        Serializes the state in settings and/or in the database.
+
+        input:
+            - settings: Must support settings.setValue(key: str, value)
+            - dbManager: MongoDBManager
+        """
         collectionToActionMapAsJson = json.dumps(self.collectionToActionsMap)
         dbManager.db[Keys.STATE_COLLECTION].replace_one({"_id":Keys.ACTION_MANAGER_ID}, {"collectionToActionMapAsJson": collectionToActionMapAsJson}, upsert=True)
 
-    def load(self, dbManager):
+    def load(self, settings, dbManager):
+        """
+        Loads the state from settings and/or the database.
+
+        input:
+            - settings: Must support settings.value(str)
+            - dbManager: MongoDBManager
+        """
         actionManagerState = dbManager.db[Keys.STATE_COLLECTION].find_one({"_id":Keys.ACTION_MANAGER_ID})
 
         if actionManagerState != None:

@@ -30,7 +30,14 @@ class EnvironmentManager(object):
     def hasEnvironmentId(self, environmentId):
         return self.getEnvironmentFromId(environmentId) != None
 
-    def save(self, dbManager):
+    def save(self, settings, dbManager):
+        """
+        Serializes the state in settings and/or in the database.
+
+        input:
+            - settings: Must support settings.setValue(key: str, value)
+            - dbManager: MongoDBManager
+        """
         environmentsDict = dict()
         for env in self.environments:
             envState = env.getStateDict()
@@ -38,7 +45,14 @@ class EnvironmentManager(object):
 
         dbManager.db[Keys.STATE_COLLECTION].replace_one({"_id": Keys.ENVIRONMENT_MANAGER_ID}, {"environments": environmentsDict}, upsert=True)
 
-    def load(self, dbManager):
+    def load(self, settings, dbManager):
+        """
+        Loads the state from settings and/or the database.
+
+        input:
+            - settings: Must support settings.value(str)
+            - dbManager: MongoDBManager
+        """
         state = dbManager.db[Keys.STATE_COLLECTION].find_one({"_id": Keys.ENVIRONMENT_MANAGER_ID})
 
         if state != None:
