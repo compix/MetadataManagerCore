@@ -233,7 +233,7 @@ class DeadlineService(object):
     """
     def installKnownDeadlinePlugin(self, pluginName):
         curLocation = os.path.abspath(os.path.dirname(__file__))
-        return self.installDeadlinePlugin(os.path.join(curLocation, pluginName))
+        return self.installDeadlinePlugin(os.path.join(curLocation, "plugins", pluginName))
 
     def save(self, settings, dbManager):
         """

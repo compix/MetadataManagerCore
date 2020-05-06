@@ -1,0 +1,25 @@
+[About]
+Type=label
+Label=About
+Category=About Plugin
+CategoryOrder=-1
+Default=The metadata manager plugin is used for managed task execution.
+Description=Not configurable
+
+[MetadataManagerExe]
+Type=filename
+Label=Metadata Manager Executable
+Default=C:\MetadataManager\metadata_manager.exe
+Description=The path to the metadata manager executable.
+
+[MetadataManagerPythonFile]
+Type=filename
+Label=Metadata Manager Python File
+Default=
+Description=The path to the metadata manager python file.
+
+[PythonPath]
+Type=filename
+Label=Python Executable Path
+Default=~\AppData\Local\Programs\Python\Python37\python.exe
+Description=The path to the python executable.
