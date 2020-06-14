@@ -5,6 +5,22 @@ from MetadataManagerCore.DocumentModification import DocumentOperation
 import numpy as np
 import json
 import logging
+from typing import List
+
+class CollectionHeaderKeyInfo(object):
+    MD_KEY = "key"
+    MD_DISPLAY_NAME = "displayName"
+    MD_DISPLAYED = "displayed"
+
+    def __init__(self, key, displayName, displayed):
+        self.key = key
+        self.displayName = displayName
+        self.displayed = displayed
+
+    def asDict(self):
+        return {CollectionHeaderKeyInfo.MD_KEY:self.key, 
+                CollectionHeaderKeyInfo.MD_DISPLAY_NAME: self.displayName, 
+                CollectionHeaderKeyInfo.MD_DISPLAYED: self.displayed}
 
 class MongoDBManager:
     def __init__(self, host, databaseName):
@@ -41,9 +57,9 @@ class MongoDBManager:
     def collectionsMD(self):
         return self.db[Keys.collectionsMD]
 
-    def extractTableHeaderAndDisplayedKeys(self, collectionNames):
-        header = []
-        keys = []
+    def extractCollectionHeaderInfo(self, collectionNames) -> List[CollectionHeaderKeyInfo]:
+        infos : List[CollectionHeaderKeyInfo] = []
+
         # Go through the selected collection metadata, check displayed table info
         # and add unique entries:
         for collectionName in collectionNames:
@@ -51,13 +67,17 @@ class MongoDBManager:
             if cMD:
                 cTableHeader = cMD.get("tableHeader")
                 if cTableHeader != None:
-                    assert(len(e) == 2 for e in cTableHeader)
-                    header = header + [e[Keys.COLLECTION_MD_DISPLAY_NAME_IDX] for e in cTableHeader if e[Keys.COLLECTION_MD_KEY_IDX] not in keys]
-                    keys = keys + [e[Keys.COLLECTION_MD_KEY_IDX] for e in cTableHeader if e[Keys.COLLECTION_MD_KEY_IDX] not in keys]
+                    for keyInfo in cTableHeader:
+                        key = keyInfo.get(CollectionHeaderKeyInfo.MD_KEY)
+                        displayName = keyInfo.get(CollectionHeaderKeyInfo.MD_DISPLAY_NAME)
+                        displayed = keyInfo.get(CollectionHeaderKeyInfo.MD_DISPLAYED)
 
-        return header, keys
+                        infos.append(CollectionHeaderKeyInfo(key, displayName, displayed))
 
-    def setTableHeader(self, collectionName, tableHeader):
+        return infos
+
+    def setCollectionHeaderInfo(self, collectionName, tableHeader : List[CollectionHeaderKeyInfo]):
+        tableHeader = [i.asDict() for i in tableHeader]
         self.collectionsMD.update_one({"_id": collectionName}, {'$set': {'tableHeader': tableHeader}}, upsert=True)
 
     def findAllKeysInCollection(self, collectionName):
