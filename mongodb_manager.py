@@ -117,7 +117,7 @@ class MongoDBManager:
             for item in filtered:
                 yield item
 
-    def stringToFilter(self, filterString) -> dict:
+    def stringToFilter(self, filterString : str) -> dict:
         try:
             if len(filterString) == 0:
                 return {}
