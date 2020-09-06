@@ -76,3 +76,7 @@ class Service(object,metaclass=ABCMeta):
 
     def setupFromDict(self, theDict: dict):
         pass
+    
+    @property
+    def statusAsString(self):
+        return str(self.status.value)

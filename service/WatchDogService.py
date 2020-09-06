@@ -17,6 +17,9 @@ class WatchDogService(Service):
         self.processExistingFiles = False
         self.fileHandler = None
         self.fileHandlerManager = None
+        self.existingFileHandler = None
+        self.fileCreatedHandler = None
+        self.fileModifiedHandler = None
 
     def setup(self, watchedFolder: str, watchedFileExtensions: List[str], recursive = False):
         self.watchedFolder = watchedFolder

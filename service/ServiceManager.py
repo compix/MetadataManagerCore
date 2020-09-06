@@ -53,8 +53,14 @@ class ServiceSerializationInfo(object):
         service.description = self.description
         service._status = self.status
         service.active = self.active
-        service.setupFromDict(self.serviceInfoDict if self.serviceInfoDict != None else dict())
-        return service
+        successful = True
+        try:
+            service.setupFromDict(self.serviceInfoDict if self.serviceInfoDict != None else dict())
+        except Exception as e:
+            logger.error(f'Info creation of service {service.name} failed: {str(e)}')
+            successful = False
+
+        return service, successful
         
 class ServiceManager(object):
     def __init__(self, dbManager: MongoDBManager, serviceRegistry) -> None:
@@ -88,10 +94,12 @@ class ServiceManager(object):
     def onServiceStatusChanged(self, service: Service, serviceStatus: ServiceStatus):
         self.serviceStatusChangedEvent(service, serviceStatus)
         if serviceStatus == ServiceStatus.Starting:
-            self.saveState()
+            self.saveService(service)
             self.threadPoolExecutor.submit(self.runService, service)
         elif serviceStatus == ServiceStatus.Disabled:
-            self.saveState()
+            self.saveService(service)
+        elif serviceStatus == ServiceStatus.Running:
+            self.saveServiceStatus(service)
 
     def addService(self, service: Service, initialStatus = ServiceStatus.Running):
         if not type(service) in self.serviceClasses:
@@ -111,10 +119,10 @@ class ServiceManager(object):
             if initialStatus == ServiceStatus.Disabled:
                 service.active = False
 
-            if initialStatus in [ServiceStatus.ShuttingDown, ServiceStatus.Failed]:
+            if initialStatus in [ServiceStatus.ShuttingDown]:
                 logger.error(f'Invalid initial status: {initialStatus}')
 
-            self.saveState()
+            self.saveService(service)
 
     def runService(self, service: Service):
         try:
@@ -123,14 +131,14 @@ class ServiceManager(object):
             logger.error(f'Service {service.name} failed with exception: {str(e)}')
             service.status = ServiceStatus.Failed
 
-    def saveState(self):
-        serviceDicts = []
-        for service in self.services:
-            serInfo = ServiceSerializationInfo(self.serviceRegistry)
-            serInfo.setupFromService(service)
-            serviceDicts.append(serInfo.asDict())
+    def saveService(self, service: Service):
+        serInfo = ServiceSerializationInfo(self.serviceRegistry)
+        serInfo.setupFromService(service)
 
-        self.dbManager.stateCollection.replace_one({'_id': "service_manager"}, {"service_infos": serviceDicts}, upsert=True)
+        self.dbManager.stateCollection.update_one({'_id': 'service_manager'}, [{'$set': {'services': {service.name: serInfo.asDict()}}}], upsert=True)
+
+    def saveServiceStatus(self, service: Service):
+        self.dbManager.stateCollection.update_one({'_id': 'service_manager'}, [{'$set': {'services': {service.name: {'status': service.statusAsString}}}}], upsert=True)
 
     def removeService(self, service: Service):
         self.services.remove(service)
@@ -146,6 +154,10 @@ class ServiceManager(object):
         logger.info('Waiting for shutdown completion...')
         self.threadPoolExecutor.shutdown(wait=True)
         logger.info('All services were shut down.')
+
+        for service in self.services:
+            service._status = ServiceStatus.Offline
+            self.saveServiceStatus(service)
         
     def save(self, settings, dbManager: MongoDBManager):
         """
@@ -155,7 +167,7 @@ class ServiceManager(object):
             - settings: Must support settings.setValue(key: str, value)
             - dbManager: MongoDBManager
         """
-        self.saveState()
+        pass
 
     def load(self, settings, dbManager: MongoDBManager):
         """
@@ -168,7 +180,7 @@ class ServiceManager(object):
         state = dbManager.stateCollection.find_one({'_id': "service_manager"})
 
         if state:
-            for serviceInfoDict in state['service_infos']:
+            for serviceInfoDict in state['services'].values():
                 self.addServiceFromDict(serviceInfoDict)
 
     def getServiceClassFromClassName(self, className: str):
@@ -185,7 +197,11 @@ class ServiceManager(object):
         serInfo.setupFromDict(serviceInfoDict)
         serviceClass = self.getServiceClassFromClassName(serInfo.className)
         if serviceClass:
-            service = serInfo.constructService(serviceClass)
+            service, successful = serInfo.constructService(serviceClass)
+
+            if not successful:
+                self.addService(service, initialStatus=ServiceStatus.Failed)
+                return
 
             # Check service status correctness. It must be either Offline or Disabled eitherwise the application wasn't shut down correctly.
             if not service.status in [ServiceStatus.Offline, ServiceStatus.Disabled]:

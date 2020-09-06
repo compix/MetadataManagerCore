@@ -29,6 +29,8 @@ class FileHandlerManager(object):
             fileHandler = fileHandlerClass()
             fileHandler.setupFromDict(infoDict)
             return fileHandler
+        else:
+            raise RuntimeError(f'Could not find file handler class: {fileHandlerClass}')
     
         return None
 
