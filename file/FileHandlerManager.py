@@ -1,6 +1,7 @@
 from typing import Dict
 from MetadataManagerCore.file.FileHandler import FileHandler
 import logging
+from MetadataManagerCore.file.FileHandlerRegistry import FILE_HANDLER_CLASSES
 
 logger = logging.getLogger(__name__)
 
@@ -9,6 +10,9 @@ class FileHandlerManager(object):
         super().__init__()
 
         self.fileHandlerClassNameToClassMap = dict()
+
+        for fileHandlerClass in FILE_HANDLER_CLASSES:
+            self.registerFileHandlerClass(fileHandlerClass)
 
     def registerFileHandlerClass(self, fileHandlerClass):
         if fileHandlerClass.__name__ in self.fileHandlerClassNameToClassMap:
