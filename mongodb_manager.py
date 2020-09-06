@@ -127,3 +127,7 @@ class MongoDBManager:
         except Exception as e:
             self.logger.error(f"Failed to convert filter string {filterString} to a valid filter dictionary. Reason: {str(e)}")
             return {"_id":"None"}
+
+    @property
+    def stateCollection(self):
+        return self.db[Keys.STATE_COLLECTION]

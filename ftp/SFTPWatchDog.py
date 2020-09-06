@@ -1,14 +1,14 @@
-from enum import Enum
+from MetadataManagerCore.file.WatchDog import WatchDog
 import os
+from typing import List
 
 from MetadataManagerCore.Event import Event
 from datetime import datetime, timedelta
-import json
 import logging
 
 logger = logging.getLogger(__name__)
 
-class SFTPWatchDog(object):
+class SFTPWatchDog(WatchDog):
     """Checks a specified remote folder on an SFTP server for new files. Requires the pysftp module.
     Example:
     myHostname = "127.0.0.1"
@@ -19,7 +19,7 @@ class SFTPWatchDog(object):
     sftpWatchDog.setPollingIntervalInSeconds(5.0)
     sftpWatchDog.run() # Blocking, you may want to run this on a different thread.
     """
-    def __init__(self, remoteFolder : str, host : str, username : str, password : str) -> None:
+    def __init__(self, remoteFolder : str, host : str, username : str, password : str, watchedExtensions: List[str] = None, recursive = False) -> None:
         """Creates the SFTP watch dog.
 
         Args:
@@ -29,70 +29,94 @@ class SFTPWatchDog(object):
             username (str): SFTP server username.
             password (str): SFTP server password.
         """
-        super().__init__()
+        if remoteFolder.startswith('.'):
+            remoteFolder = remoteFolder[1:]
 
-        self.remoteFolder = remoteFolder
+        super().__init__(remoteFolder, watchedExtensions, recursive)
+
         self.host = host
         self.username = username
         self.password = password
+        self.sftp = None
 
-        self.pollingInvervalInSeconds = 1.0
+        self.pollingIntervalInSeconds = 1.0
 
-        self.running = False
+        self._running = False
 
         self.lastTime = datetime.now()
 
         self.knownFiles = dict()
 
-        self.fileModifiedEvent = Event()
-        self.fileAddedEvent = Event()
+        self.onConnectionEstablished = Event()
 
     def setPollingIntervalInSeconds(self, interval : float):
-        self.pollingInvervalInSeconds = interval
+        self.pollingIntervalInSeconds = interval
 
-    def addOrUpdateFile(self, filename, dateModified : datetime):
+    def processFile(self, filename):
+        sftpAttribute = self.sftp.stat(filename)
+        if not sftpAttribute:
+            return
+
+        dateModified = datetime.fromtimestamp(sftpAttribute.st_mtime)
+
         fileInfoDict = self.knownFiles.get(filename)
         if fileInfoDict:
             curDateModified = fileInfoDict['dateModified']
             if dateModified - curDateModified > timedelta(microseconds=1):
                 fileInfoDict['dateModified'] = dateModified
                 self.knownFiles[filename] = fileInfoDict
-                self.fileModifiedEvent(filename)
-                print(f'On File Modified: {filename}')
+                self.onFileModified(filename)
         else:
-            self.fileAddedEvent(filename)
+            self.onFileCreated(filename)
             self.knownFiles[filename] = {
                 'dateModified': dateModified
             }
-            print(f'On File Added: {filename}')
 
     def run(self):
         import pysftp
 
-        self.running = True
+        self._running = True
 
         cnopts = pysftp.CnOpts()
         cnopts.hostkeys = None
 
-        with pysftp.Connection(host=self.host, username=self.username, password=self.password, cnopts=cnopts) as sftp:
+        logging.getLogger("paramiko").setLevel(logging.WARNING)
+
+        with pysftp.Connection(host=self.host, username=self.username, password=self.password, cnopts=cnopts) as self.sftp:
             print("Connection successfully established ...")
-
-            sftp.cwd(self.remoteFolder)
-
+            self.onConnectionEstablished()
+            
             # First add the files that are already present in the directory:
-            sftpAttributes = sftp.listdir_attr()
-            for sftpAttribute in sftpAttributes:
-                dateModified = datetime.fromtimestamp(sftpAttribute.st_mtime)
-                if sftpAttribute.filename:
-                    self.knownFiles[sftpAttribute.filename] = {
-                        'dateModified': dateModified
-                    }
+            def initFile(filename):
+                sftpAttribute = self.sftp.stat(filename)
+                if sftpAttribute:
+                    dateModified = datetime.fromtimestamp(sftpAttribute.st_mtime)
+                    self.knownFiles[filename] = {'dateModified': dateModified}
 
-            while self.running:
+            self.processFiles(initFile)
+
+            while self._running:
                 now = datetime.now()
-                if now - self.lastTime > timedelta(seconds=self.pollingInvervalInSeconds):
+                if now - self.lastTime > timedelta(seconds=self.pollingIntervalInSeconds):
                     self.lastTime = now
-                    sftpAttributes = sftp.listdir_attr()
-                    for sftpAttribute in sftpAttributes:
-                        dateModified = datetime.fromtimestamp(sftpAttribute.st_mtime)
-                        self.addOrUpdateFile(sftpAttribute.filename, dateModified)
+                    self.processFiles(self.processFile)
+
+    def processFiles(self, fileHandler):
+        def checkedFileHandler(filename):
+            if self.checkExtension(filename):
+                fileHandler(filename)
+
+        self.sftp.walktree(self.watchedFolder, checkedFileHandler, lambda _: {}, lambda _: {}, recurse=self.recursive)
+
+    def copyFile(self, remoteFilename, localFilename):
+        self.sftp.get(remoteFilename, localFilename)
+
+    def renameFile(self, srcRemoteFilename, destRemoteFilename):
+        self.sftp.rename(srcRemoteFilename, destRemoteFilename)
+
+    def stop(self):
+        self._running = False
+
+    @property
+    def running(self):
+        return self._running
