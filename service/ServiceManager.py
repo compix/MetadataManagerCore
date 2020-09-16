@@ -98,7 +98,7 @@ class ServiceManager(object):
             self.threadPoolExecutor.submit(self.runService, service)
         elif serviceStatus == ServiceStatus.Disabled:
             self.saveService(service)
-        elif serviceStatus == ServiceStatus.Running:
+        else:
             self.saveServiceStatus(service)
 
     def addService(self, service: Service, initialStatus = ServiceStatus.Running):
