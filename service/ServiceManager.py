@@ -70,7 +70,7 @@ class ServiceManager(object):
         self.serviceRegistry = serviceRegistry
         self.serviceClasses = set()
         self.services :List[Service] = []
-        self.threadPoolExecutor = ThreadPoolExecutor(max_workers=10)
+        self.threadPoolExecutor = ThreadPoolExecutor()
         self.serviceStatusChangedEvent = Event()
 
     @staticmethod

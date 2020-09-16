@@ -35,6 +35,7 @@ class FileSystemWatchDog(WatchDog):
         return self.observer and self.observer.is_alive()
 
     def stop(self):
+        print('Stopping...')
         if self.observer:
             self.observer.stop()
 
