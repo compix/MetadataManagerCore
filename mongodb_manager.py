@@ -133,5 +133,5 @@ class MongoDBManager:
         return self.db[Keys.STATE_COLLECTION]
 
     @property
-    def hostsCollection(self):
-        return self.db[Keys.HOSTS_COLLECTION]
+    def hostProcessesCollection(self):
+        return self.db[Keys.HOST_PROCESSES_COLLECTION]

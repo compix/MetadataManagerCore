@@ -1,3 +1,4 @@
+from MetadataManagerCore.host.HostProcessController import HostProcessController
 from MetadataManagerCore.Event import Event
 from typing import List
 from MetadataManagerCore.service.Service import Service, ServiceStatus
@@ -63,10 +64,11 @@ class ServiceSerializationInfo(object):
         return service, successful
         
 class ServiceManager(object):
-    def __init__(self, dbManager: MongoDBManager, serviceRegistry) -> None:
+    def __init__(self, dbManager: MongoDBManager, hostProcessController: HostProcessController, serviceRegistry) -> None:
         super().__init__()
 
         self.dbManager = dbManager
+        self.hostProcessController = hostProcessController
         self.serviceRegistry = serviceRegistry
         self.serviceClasses = set()
         self.services :List[Service] = []
@@ -139,6 +141,9 @@ class ServiceManager(object):
 
     def saveServiceStatus(self, service: Service):
         self.dbManager.stateCollection.update_one({'_id': 'service_manager'}, [{'$set': {'services': {service.name: {'status': service.statusAsString}}}}], upsert=True)
+
+    def saveServiceHost(self, service: Service, hostname: str):
+        self.dbManager.stateCollection.update_one({'_id': 'service_manager'}, [{'$set': {'services': {service.name: {'host': hostname}}}}], upsert=True)
 
     def removeService(self, service: Service):
         self.services.remove(service)

@@ -54,6 +54,16 @@ class Service(object,metaclass=ABCMeta):
     def _run(self):
         ...
 
+    @property
+    def supportsMultipleInstances(self):
+        """Returns true if the service may run on multiple hosts/instances (processes).
+        """
+        return False
+
+    @property
+    def supportsConsoleMode(self):
+        return False
+
     def onStatusChanged(self, status):
         pass
 
