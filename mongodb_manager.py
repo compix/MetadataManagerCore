@@ -135,3 +135,11 @@ class MongoDBManager:
     @property
     def hostProcessesCollection(self):
         return self.db[Keys.HOST_PROCESSES_COLLECTION]
+
+    @property
+    def serviceProcessCollection(self):
+        return self.db[Keys.SERVICE_PROCESS_COLLECTION]
+
+    @property
+    def serviceCollection(self):
+        return self.db[Keys.SERVICE_COLLECTION]

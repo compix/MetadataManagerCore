@@ -1,3 +1,4 @@
+from MetadataManagerCore.service.ServiceTargetRestriction import ServiceTargetRestriction
 from abc import ABCMeta, abstractmethod
 from enum import Enum
 from MetadataManagerCore.Event import Event
@@ -28,6 +29,10 @@ class Service(object,metaclass=ABCMeta):
         self.active = None
         self.statusChangedEvent = Event()
         self.serviceRegistry = None
+
+        # Hostname and pid will only be set if the service is allowed to run on only one host process
+        self.hostname = None
+        self.pid = None
     
     def run(self):
         self.status = ServiceStatus.Running
@@ -54,11 +59,10 @@ class Service(object,metaclass=ABCMeta):
     def _run(self):
         ...
 
+    @classmethod
     @property
-    def supportsMultipleInstances(self):
-        """Returns true if the service may run on multiple hosts/instances (processes).
-        """
-        return False
+    def serviceTargetRestriction() -> ServiceTargetRestriction:
+        return ServiceTargetRestriction.SingleHostProcess
 
     @property
     def supportsConsoleMode(self):
