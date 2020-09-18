@@ -1,5 +1,5 @@
 from MetadataManagerCore.host.HostProcess import HostProcess
-from typing import Dict, List
+from typing import Dict
 from MetadataManagerCore.mongodb_manager import MongoDBManager
 import time
 from datetime import datetime, timedelta

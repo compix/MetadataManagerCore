@@ -29,10 +29,6 @@ class Service(object,metaclass=ABCMeta):
         self.active = None
         self.statusChangedEvent = Event()
         self.serviceRegistry = None
-
-        # Hostname and pid will only be set if the service is allowed to run on only one host process
-        self.hostname = None
-        self.pid = None
     
     def run(self):
         self.status = ServiceStatus.Running
@@ -59,9 +55,8 @@ class Service(object,metaclass=ABCMeta):
     def _run(self):
         ...
 
-    @classmethod
-    @property
-    def serviceTargetRestriction() -> ServiceTargetRestriction:
+    @staticmethod
+    def getServiceTargetRestriction() -> ServiceTargetRestriction:
         return ServiceTargetRestriction.SingleHostProcess
 
     @property

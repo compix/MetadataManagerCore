@@ -1,5 +1,4 @@
 from MetadataManagerCore.service.ServiceMonitor import ServiceMonitor
-from MetadataManagerCore.service.ServiceProcessMonitor import ServiceProcessMonitor
 import os
 import socket
 from MetadataManagerCore.service.ServiceTargetRestriction import ServiceTargetRestriction
@@ -20,6 +19,8 @@ class ServiceManager(object):
     def __init__(self, dbManager: MongoDBManager, hostProcessController: HostProcessController, serviceRegistry) -> None:
         super().__init__()
 
+        dbManager.serviceProcessCollection.create_index("heartbeat_time", expireAfterSeconds=ServiceProcessController.dyingTimeInSeconds)
+
         self.dbManager = dbManager
         self.hostProcessController = hostProcessController
         self.serviceRegistry = serviceRegistry
@@ -27,7 +28,7 @@ class ServiceManager(object):
         self.serviceControllers: List[ServiceProcessController] = []
         self.serviceMonitors: List[ServiceMonitor] = []
         self.threadPoolExecutor = ThreadPoolExecutor()
-        self.serviceStatusChangedEvent = Event()
+        self.onServiceActiveStatusChanged = Event()
 
     @staticmethod
     def createBaseServiceInfoDictionary(serviceClassName: str, serviceName: str, serviceDescription: str, initialStatus: ServiceStatus):
@@ -92,7 +93,7 @@ class ServiceManager(object):
 
     @staticmethod
     def getServiceProcessId(serviceInfo: ServiceSerializationInfo, serviceClass: Any):
-        serviceTargetRestriction: ServiceTargetRestriction = serviceClass.serviceTargetRestriction
+        serviceTargetRestriction: ServiceTargetRestriction = serviceClass.getServiceTargetRestriction()
 
         hostname = socket.gethostname()
         pid = os.getpid()
@@ -121,7 +122,7 @@ class ServiceManager(object):
             self.dbManager.serviceProcessCollection.insert_one({
                 '_id': serviceProcessId,
                 'name': serviceInfo.name,
-                'status': ServiceStatus.Created, 
+                'status': str(ServiceStatus.Created.value), 
                 'heartbeat_time': datetime.utcnow(),
                 'hostname': hostname,
                 'pid': pid
@@ -131,7 +132,13 @@ class ServiceManager(object):
 
         return serviceProcessId
 
-    def addServiceFromDict(self, serviceInfoDict: dict):
+    def setServiceActive(self, serviceName: str, active: bool):
+        self.updateServiceValue(serviceName, 'active', active)
+
+    def updateServiceValue(self, serviceName: str, key: str, value: Any):
+        self.dbManager.serviceCollection.update_one({'_id': serviceName}, {'$set': {key: value}}, upsert=True)
+
+    def addServiceFromDict(self, serviceInfoDict: dict, newService = False):
         """Request to add a service from dict. This operation might actually not create a service.
         Args:
             serviceInfoDict (dict): Dictionary with information describing the service.
@@ -153,5 +160,11 @@ class ServiceManager(object):
 
         # Add ServiceMonitor
         serviceProcessId = ServiceManager.getServiceProcessId(serInfo, serviceClass)
-        serviceProcessMonitor = ServiceProcessMonitor(serInfo.name, self.dbManager, self.threadPoolExecutor)
-        self.serviceMonitors.append(serviceProcessMonitor)
+        serviceMonitor = ServiceMonitor(serviceInfoDict, self.dbManager, self.threadPoolExecutor)
+        self.serviceMonitors.append(serviceMonitor)
+
+        serviceMonitor.onServiceInfoDictChanged.subscribe(self.onServiceInfoDictChanged)
+
+    def onServiceInfoDictChanged(self, prevInfoDict: dict, newInfoDict: dict):
+        if prevInfoDict.get('active') != newInfoDict.get('active'):
+            self.onServiceActiveStatusChanged(prevInfoDict.get('name'), newInfoDict.get('active'))

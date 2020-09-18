@@ -10,6 +10,8 @@ import time
 logger = logging.getLogger(__name__)
 
 class ServiceProcessController(object):
+    dyingTimeInSeconds = 5.0
+
     def __init__(self, dbManager: MongoDBManager, serviceRegistry, serviceProcessId: str, serviceSerializationInfo: ServiceSerializationInfo, serviceClass: Any, threadPoolExecutor: ThreadPoolExecutor) -> None:
         super().__init__()
 
@@ -43,7 +45,6 @@ class ServiceProcessController(object):
         self.service.status = ServiceStatus.ShuttingDown
     
     def onServiceStatusChanged(self, serviceStatus: ServiceStatus):
-        self.serviceStatusChangedEvent(self.service, serviceStatus)
         self.updateServiceProcessValue('status', str(serviceStatus.value))
 
         if serviceStatus == ServiceStatus.Starting:
@@ -73,4 +74,4 @@ class ServiceProcessController(object):
         serInfo = ServiceSerializationInfo(self.serviceRegistry)
         serInfo.setupFromService(self.service)
 
-        self.dbManager.serviceCollection.update_one({'_id': serInfo.name}, serInfo.asDict(), upsert=True)
+        self.dbManager.serviceCollection.replace_one({'_id': serInfo.name}, serInfo.asDict(), upsert=True)

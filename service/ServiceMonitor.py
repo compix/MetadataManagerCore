@@ -1,3 +1,4 @@
+from MetadataManagerCore.service.ServiceSerializationInfo import ServiceSerializationInfo
 from typing import Dict, List
 from MetadataManagerCore.Event import Event
 from MetadataManagerCore.service.Service import ServiceStatus
@@ -13,15 +14,15 @@ class ProcessInfoDictWrapper(object):
         self.dirty = False
 
 class ServiceMonitor(object):
-    def __init__(self, serviceName: str, dbManager: MongoDBManager, threadPoolExecutor: ThreadPoolExecutor) -> None:
+    def __init__(self, serviceInfoDict: dict, dbManager: MongoDBManager, threadPoolExecutor: ThreadPoolExecutor) -> None:
         super().__init__()
 
-        self.serviceName = serviceName
+        self.serviceName = serviceInfoDict.get('name')
         self.dbManager = dbManager
         self.isRunning = True
         self.checkIntervalInSeconds = 1.0
         self.lastStatus = None
-        self.lastServiceInfoDict = None
+        self.lastServiceInfoDict = serviceInfoDict
 
         self.lastServiceProcessInfos: Dict[str, ProcessInfoDictWrapper] = dict()
 
@@ -31,6 +32,14 @@ class ServiceMonitor(object):
         self._onServiceInfoDictChanged = Event()
 
         threadPoolExecutor.submit(self.run)
+
+    @property
+    def serviceDescription(self):
+        return self.lastServiceInfoDict.get('description') if self.lastServiceInfoDict else None
+
+    @property
+    def serviceActive(self):
+        return self.lastServiceInfoDict.get('active') if self.lastServiceInfoDict else None
 
     @property
     def onServiceProcessStatusChangedEvent(self):
@@ -60,7 +69,7 @@ class ServiceMonitor(object):
         return self.dbManager.serviceProcessCollection.find({'name': self.serviceName})
     
     def findServiceInfo(self):
-        self.dbManager.serviceCollection.find_one({'_id': self.serviceName})
+        return self.dbManager.serviceCollection.find_one({'_id': self.serviceName})
     
     def shutdown(self):
         self.isRunning = False
