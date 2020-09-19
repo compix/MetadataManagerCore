@@ -12,6 +12,8 @@ from concurrent.futures import ThreadPoolExecutor
 import logging
 from datetime import datetime
 from MetadataManagerCore.service.ServiceSerializationInfo import ServiceSerializationInfo
+from MetadataManagerCore.service.ServiceInfo import ServiceInfo
+import time
 
 logger = logging.getLogger(__name__)
         
@@ -21,6 +23,7 @@ class ServiceManager(object):
 
         dbManager.serviceProcessCollection.create_index("heartbeat_time", expireAfterSeconds=ServiceProcessController.dyingTimeInSeconds)
 
+        self.isRunning = True
         self.dbManager = dbManager
         self.hostProcessController = hostProcessController
         self.serviceRegistry = serviceRegistry
@@ -29,6 +32,8 @@ class ServiceManager(object):
         self.serviceMonitors: List[ServiceMonitor] = []
         self.threadPoolExecutor = ThreadPoolExecutor()
         self.onServiceActiveStatusChanged = Event()
+        self.onServiceProcessChanged = Event()
+        self.onServiceAdded = Event()
 
     @staticmethod
     def createBaseServiceInfoDictionary(serviceClassName: str, serviceName: str, serviceDescription: str, initialStatus: ServiceStatus):
@@ -47,7 +52,54 @@ class ServiceManager(object):
     def registerServiceClass(self, serviceClass):
         self.serviceClasses.add(serviceClass)
 
+    def monitorServices(self):
+        class MonitorInfo(object):
+            def __init__(self, serviceDict):
+                super().__init__()
+
+                self.serviceDict = serviceDict
+                self.dirty = False
+
+            @property
+            def id(self):
+                return self.serviceDict.get('_id')
+
+        def findMonitorInfos():
+            lastServiceDicts = self.dbManager.serviceCollection.find({})
+            return {infoDict.get('_id'):MonitorInfo(infoDict) for infoDict in lastServiceDicts} if lastServiceDicts else dict()
+
+        lastMonitorInfos = findMonitorInfos()
+
+        while self.isRunning:
+            time.sleep(1.0)
+            
+            try:
+                for i in lastMonitorInfos.values():
+                    i.dirty = True
+
+                monitorInfos = findMonitorInfos()
+
+                for info in monitorInfos.values():
+                    lastInfo = lastMonitorInfos.get(info.id)
+                    if not lastInfo:
+                        # New service was added:
+                        lastMonitorInfos[info.id] = info
+                        self.addServiceFromDict(info.serviceDict)
+                    else:
+                        lastInfo.dirty = False
+                
+                removedMonitorInfos = [i for i in lastMonitorInfos.values() if i.dirty]
+
+                for removedInfo in removedMonitorInfos:
+                    lastMonitorInfos.pop(removedInfo.id)
+                    # TODO: Remove the service (controller + monitor).
+                    pass
+            except Exception as e:
+                logger.error(f'Failed service monitoring with exception: {str(e)}')
+            
     def shutdown(self):
+        self.isRunning = False
+
         for serviceController in self.serviceControllers:
             serviceController.shutdown()
 
@@ -81,6 +133,8 @@ class ServiceManager(object):
         if serviceInfos:
             for serviceInfoDict in serviceInfos:
                 self.addServiceFromDict(serviceInfoDict)
+
+        self.threadPoolExecutor.submit(self.monitorServices)
 
     def getServiceClassFromClassName(self, className: str):
         returnServiceClass = None
@@ -163,8 +217,11 @@ class ServiceManager(object):
         serviceMonitor = ServiceMonitor(serviceInfoDict, self.dbManager, self.threadPoolExecutor)
         self.serviceMonitors.append(serviceMonitor)
 
-        serviceMonitor.onServiceInfoDictChanged.subscribe(self.onServiceInfoDictChanged)
+        self.onServiceAdded(ServiceInfo(serviceInfoDict))
 
-    def onServiceInfoDictChanged(self, prevInfoDict: dict, newInfoDict: dict):
-        if prevInfoDict.get('active') != newInfoDict.get('active'):
-            self.onServiceActiveStatusChanged(prevInfoDict.get('name'), newInfoDict.get('active'))
+        serviceMonitor.onServiceInfoChanged.subscribe(self.onServiceInfoChanged)
+        serviceMonitor.onServiceProcessChanged.subscribe(self.onServiceProcessChanged)
+
+    def onServiceInfoChanged(self, prevInfo: ServiceInfo, newInfo: ServiceInfo):
+        if prevInfo.active != newInfo.active:
+            self.onServiceActiveStatusChanged(newInfo)

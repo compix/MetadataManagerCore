@@ -5,13 +5,37 @@ from MetadataManagerCore.service.Service import ServiceStatus
 from concurrent.futures.thread import ThreadPoolExecutor
 from MetadataManagerCore.mongodb_manager import MongoDBManager
 import time
+from MetadataManagerCore.service.ServiceInfo import ServiceInfo
 
-class ProcessInfoDictWrapper(object):
-    def __init__(self, processInfoDict: dict) -> None:
+class ServiceProcessInfo(object):
+    def __init__(self, processDict: dict):
         super().__init__()
 
-        self.processInfoDict = processInfoDict
+        self.processDict = processDict if processDict else dict()
         self.dirty = False
+
+    @property
+    def status(self) -> ServiceStatus:
+        return ServiceStatus(self.processDict.get('status'))
+
+    @property
+    def id(self) -> str:
+        return self.processDict.get('_id')
+
+    @property
+    def serviceName(self) -> str:
+        return self.processDict.get('name')
+
+    @property
+    def hostname(self) -> str:
+        return self.processDict.get('hostname')
+
+    @property
+    def pid(self) -> int:
+        return self.processDict.get('pid')
+
+    def get(self, key: str):
+        return self.processDict.get(key)
 
 class ServiceMonitor(object):
     def __init__(self, serviceInfoDict: dict, dbManager: MongoDBManager, threadPoolExecutor: ThreadPoolExecutor) -> None:
@@ -22,24 +46,25 @@ class ServiceMonitor(object):
         self.isRunning = True
         self.checkIntervalInSeconds = 1.0
         self.lastStatus = None
-        self.lastServiceInfoDict = serviceInfoDict
+        self.lastServiceInfo = ServiceInfo(serviceInfoDict)
 
-        self.lastServiceProcessInfos: Dict[str, ProcessInfoDictWrapper] = dict()
+        self.lastServiceProcessInfos: Dict[str, ServiceProcessInfo] = dict()
 
         self._onServiceProcessStatusChangedEvent = Event()
         self._onServiceProcessAddedEvent = Event()
         self._onServiceProcessRemovedEvent = Event()
-        self._onServiceInfoDictChanged = Event()
+        self._onServiceInfoChanged = Event()
+        self._onServiceProcessChanged = Event()
 
         threadPoolExecutor.submit(self.run)
 
     @property
     def serviceDescription(self):
-        return self.lastServiceInfoDict.get('description') if self.lastServiceInfoDict else None
+        return self.lastServiceInfo.description
 
     @property
     def serviceActive(self):
-        return self.lastServiceInfoDict.get('active') if self.lastServiceInfoDict else None
+        return self.lastServiceInfo.active
 
     @property
     def onServiceProcessStatusChangedEvent(self):
@@ -60,37 +85,44 @@ class ServiceMonitor(object):
         return self._onServiceProcessRemovedEvent
         
     @property
-    def onServiceInfoDictChanged(self):
-        """Event args: (prevInfoDict: dict, newInfoDict: dict)
+    def onServiceInfoChanged(self):
+        """Event args: (prevInfo: ServiceInfo, newInfo: ServiceInfo)
         """
-        return self._onServiceInfoDictChanged
+        return self._onServiceInfoChanged
+
+    @property
+    def onServiceProcessChanged(self):
+        """Event args: (processInfo: ServiceProcessInfo)
+        """
+        return self._onServiceProcessChanged
 
     def findProcessInfos(self):
         return self.dbManager.serviceProcessCollection.find({'name': self.serviceName})
     
     def findServiceInfo(self):
-        return self.dbManager.serviceCollection.find_one({'_id': self.serviceName})
+        return ServiceInfo(self.dbManager.serviceCollection.find_one({'_id': self.serviceName}))
     
     def shutdown(self):
         self.isRunning = False
 
     def run(self):
-        self.lastServiceInfoDict = self.findServiceInfo()
+        self.lastServiceInfo = self.findServiceInfo()
         serviceProcessInfoDicts = self.findProcessInfos()
 
         if serviceProcessInfoDicts:
             for processInfoDict in serviceProcessInfoDicts:
                 id = processInfoDict.get('_id')
-                self.lastServiceProcessInfos[id] = ProcessInfoDictWrapper(processInfoDict)
+                self.lastServiceProcessInfos[id] = ServiceProcessInfo(processInfoDict)
 
         while self.isRunning:
             time.sleep(self.checkIntervalInSeconds)
 
-            curServiceInfoDict = self.findServiceInfo()
+            curServiceInfo = self.findServiceInfo()
 
-            if curServiceInfoDict != self.lastServiceInfoDict:
-                self._onServiceInfoDictChanged(self.lastServiceInfoDict, curServiceInfoDict)
-                self.lastServiceInfoDict = curServiceInfoDict
+            if curServiceInfo.serviceDict != self.lastServiceInfo.serviceDict:
+                lastServiceInfo = self.lastServiceInfo
+                self.lastServiceInfo = curServiceInfo
+                self._onServiceInfoChanged(lastServiceInfo, curServiceInfo)
 
             # Check for service process changes:
             # Set last info dicts to dirty:
@@ -98,40 +130,50 @@ class ServiceMonitor(object):
                 processInfo.dirty = True
 
             curServiceProcessInfoDicts = self.findProcessInfos()
-            addedServiceProcessInfoDicts: List[dict] = []
+            addedServiceProcessInfos: List[ServiceProcessInfo] = []
             if curServiceProcessInfoDicts:
                 for curProcessInfoDict in curServiceProcessInfoDicts:
+                    curProcessInfo = ServiceProcessInfo(curProcessInfoDict)
                     if self.lastServiceProcessInfos:
-                        id = curProcessInfoDict.get('_id')
+                        id = curProcessInfo.id
                         lastServiceProcessInfo = self.lastServiceProcessInfos.get(id)
                         if lastServiceProcessInfo:
                             lastServiceProcessInfo.dirty = False
-                            lastStatus = lastServiceProcessInfo.processInfoDict.get('status')
-                            curStatus = curProcessInfoDict.get('status')
+                            lastStatus = lastServiceProcessInfo.status
+                            curStatus = curProcessInfo.status
 
                             if lastStatus != curStatus:
                                 lastStatus = ServiceStatus(lastStatus) if lastStatus else None
                                 curStatus = ServiceStatus(curStatus) if curStatus else None
+                                self.lastServiceProcessInfos[id] = curProcessInfo
                                 self.onServiceProcessStatusChangedEvent(id, lastStatus, curStatus)
+                                self._onServiceProcessChanged(curProcessInfo)
                         else:
-                            addedServiceProcessInfoDicts.append(curProcessInfoDict)
+                            addedServiceProcessInfos.append(curProcessInfo)
                     else:
-                        addedServiceProcessInfoDicts.append(curProcessInfoDict)
+                        addedServiceProcessInfos.append(curProcessInfo)
 
             removedServiceProcessIds: List[str] = []
             for processInfo in self.lastServiceProcessInfos.values():
                 if processInfo.dirty:
-                    removedServiceProcessIds.append(processInfo.get('_id'))
+                    removedServiceProcessIds.append(processInfo.id)
 
             for removedProcessId in removedServiceProcessIds:
-                self.lastServiceProcessInfos.pop(removedProcessId)
+                removedProcessInfo = self.lastServiceProcessInfos.pop(removedProcessId)
                 self.onServiceProcessRemovedEvent(removedProcessId)
 
-            for addedProcessInfoDict in addedServiceProcessInfoDicts:
-                id = addedProcessInfoDict.get('_id')
-                self.lastServiceProcessInfos[id] = ProcessInfoDictWrapper(addedProcessInfoDict)
+                self._onServiceProcessChanged(removedProcessInfo)
+
+            for addedProcessInfo in addedServiceProcessInfos:
+                id = addedProcessInfo.id
+                self.lastServiceProcessInfos[id] = addedProcessInfo
                 self.onServiceProcessAddedEvent(id)
 
+                self._onServiceProcessChanged(addedProcessInfo)
+
+    @property
+    def serviceProcessInfos(self) -> List[ServiceProcessInfo]:
+        return self.lastServiceProcessInfos.values()
 
 
             
