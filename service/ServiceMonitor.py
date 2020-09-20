@@ -67,6 +67,10 @@ class ServiceMonitor(object):
         return self.lastServiceInfo.active
 
     @property
+    def serviceInfo(self):
+        return self.lastServiceInfo
+
+    @property
     def onServiceProcessStatusChangedEvent(self):
         """Event args: (serviceProcessId: str, prevStatus: ServiceStatus, newStatus: ServiceStatus)
         """
@@ -175,9 +179,17 @@ class ServiceMonitor(object):
     def serviceProcessInfos(self) -> List[ServiceProcessInfo]:
         return self.lastServiceProcessInfos.values()
 
+    def getServiceHealthStatusString(self):
+        if self.lastServiceProcessInfos:
+            serviceProcessCount = len(self.lastServiceProcessInfos.keys())
+            if serviceProcessCount > 0:
+                runningProcessCount = sum(1 for p in self.lastServiceProcessInfos.values() if p.status == ServiceStatus.Running)
 
-            
+                if runningProcessCount == serviceProcessCount:
+                    return 'Healthy'
+                elif runningProcessCount == 0:
+                    return 'Failing'
+                else:
+                    return f'{runningProcessCount}/{serviceProcessCount} running'
 
-
-
-
+        return 'Not Running'
