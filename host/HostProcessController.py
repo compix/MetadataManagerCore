@@ -1,6 +1,5 @@
 from MetadataManagerCore.host.HostProcess import HostProcess
-from MetadataManagerCore.host.HostProcessStatus import HostProcessStatus
-from typing import Any, Dict
+from typing import Dict
 from MetadataManagerCore.mongodb_manager import MongoDBManager
 import time
 from datetime import datetime, timedelta
@@ -137,3 +136,4 @@ class HostProcessController(object):
     def removeHostProcessInfo(self, hostname: str, pid: int):
         self._hostProcessInfos.pop(HostProcessController.getHostProcessId(hostname, pid))
         self.onHostProcessRemovedEvent(hostname, pid)
+        

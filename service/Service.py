@@ -1,3 +1,4 @@
+from MetadataManagerCore.service.ServiceTargetRestriction import ServiceTargetRestriction
 from abc import ABCMeta, abstractmethod
 from enum import Enum
 from MetadataManagerCore.Event import Event
@@ -54,11 +55,9 @@ class Service(object,metaclass=ABCMeta):
     def _run(self):
         ...
 
-    @property
-    def supportsMultipleInstances(self):
-        """Returns true if the service may run on multiple hosts/instances (processes).
-        """
-        return False
+    @staticmethod
+    def getServiceTargetRestriction() -> ServiceTargetRestriction:
+        return ServiceTargetRestriction.SingleHostProcess
 
     @property
     def supportsConsoleMode(self):

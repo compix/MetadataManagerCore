@@ -19,6 +19,8 @@ OLD_VERSIONS_COLLECTION_SUFFIX = "_old_versions"
 
 STATE_COLLECTION = "state"
 HOST_PROCESSES_COLLECTION = "host_processes"
+SERVICE_COLLECTION = "services"
+SERVICE_PROCESS_COLLECTION = "service_processes"
 ACTION_MANAGER_ID = "action_manager"
 ENVIRONMENT_MANAGER_ID = "environment_manager"
 ARCHIVED_ENVIRONMENTS_ID = "archived_environments"

@@ -1,5 +1,4 @@
 from typing import Any
-from MetadataManagerCore.host.HostProcessStatus import HostProcessStatus
 from MetadataManagerCore.mongodb_manager import MongoDBManager
 import socket
 from datetime import datetime, timedelta

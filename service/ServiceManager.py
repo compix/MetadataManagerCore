@@ -1,86 +1,70 @@
+from MetadataManagerCore.service.ServiceMonitor import ServiceMonitor, ServiceProcessInfo
+import os
+import socket
+from MetadataManagerCore.service.ServiceTargetRestriction import ServiceTargetRestriction
+from MetadataManagerCore.service.ServiceProcessController import ServiceProcessController
 from MetadataManagerCore.host.HostProcessController import HostProcessController
 from MetadataManagerCore.Event import Event
-from typing import List
+from typing import Any, List
 from MetadataManagerCore.service.Service import Service, ServiceStatus
 from MetadataManagerCore.mongodb_manager import MongoDBManager
 from concurrent.futures import ThreadPoolExecutor
 import logging
+from datetime import datetime, timedelta
+from MetadataManagerCore.service.ServiceSerializationInfo import ServiceSerializationInfo
+from MetadataManagerCore.service.ServiceInfo import ServiceInfo
+import time
 
 logger = logging.getLogger(__name__)
 
-class ServiceSerializationInfo(object):
-    def __init__(self, serviceRegistry) -> None:
+class ServiceBlockInfo(object):
+    blockDurationInSeconds = 60
+
+    def __init__(self, serviceName: str) -> None:
         super().__init__()
 
-        self.serviceRegistry = serviceRegistry
-        self.name = None
-        self.description = None
-        self.status = None
-        self.active = None
-        self.className = None
-        self.module = None
-        self.serviceInfoDict = None
+        self.blockedTime = datetime.utcnow()
+        self.serviceName = serviceName
 
-    def setupFromService(self, service: Service):
-        self.name = service.name
-        self.description = service.description
-        self.status = service.status
-        self.active = service.active
-        self.className = type(service).__name__
-        self.serviceInfoDict = service.asDict()
+    @property
+    def isBlocked(self):
+        return datetime.utcnow() - self.blockedTime < timedelta(seconds=ServiceBlockInfo.blockDurationInSeconds)
 
-    def setupFromDict(self, theDict: dict):
-        self.name = theDict['name']
-        self.description = theDict['description']
-        self.status = ServiceStatus(theDict['status'])
-        self.active = theDict['active']
-        self.className = theDict['className']
-        self.serviceInfoDict = theDict['serviceInfoDict']
+class ServiceMonitorInfo(object):
+    def __init__(self, serviceDict):
+        super().__init__()
 
-    def asDict(self):
-        return {
-            'name': self.name,
-            'description': self.description,
-            'status': str(self.status.value),
-            'active': self.active,
-            'className': self.className,
-            'serviceInfoDict': self.serviceInfoDict
-        }
+        self.serviceDict = serviceDict
+        self.dirty = False
 
-    def constructService(self, serviceClass) -> Service:
-        service : Service = serviceClass()
-        service.serviceRegistry = self.serviceRegistry
-        service.name = self.name
-        service.description = self.description
-        service._status = self.status
-        service.active = self.active
-        successful = True
-        try:
-            service.setupFromDict(self.serviceInfoDict if self.serviceInfoDict != None else dict())
-        except Exception as e:
-            logger.error(f'Info creation of service {service.name} failed: {str(e)}')
-            successful = False
-
-        return service, successful
+    @property
+    def id(self):
+        return self.serviceDict.get('_id')
         
 class ServiceManager(object):
     def __init__(self, dbManager: MongoDBManager, hostProcessController: HostProcessController, serviceRegistry) -> None:
         super().__init__()
 
+        dbManager.serviceProcessCollection.create_index("heartbeat_time", expireAfterSeconds=ServiceProcessController.dyingTimeInSeconds)
+
+        self.isRunning = True
         self.dbManager = dbManager
         self.hostProcessController = hostProcessController
         self.serviceRegistry = serviceRegistry
         self.serviceClasses = set()
-        self.services :List[Service] = []
+        self.serviceControllers: List[ServiceProcessController] = []
+        self.serviceMonitors: List[ServiceMonitor] = []
         self.threadPoolExecutor = ThreadPoolExecutor()
-        self.serviceStatusChangedEvent = Event()
+        self.onServiceActiveStatusChanged = Event()
+        self.onServiceProcessChangedEvent = Event()
+        self.onServiceAdded = Event()
+        self.blockedServiceInfos : List[ServiceBlockInfo] = []
 
     @staticmethod
     def createBaseServiceInfoDictionary(serviceClassName: str, serviceName: str, serviceDescription: str, initialStatus: ServiceStatus):
         return {
             'name': serviceName,
             'description': serviceDescription,
-            'status': ServiceStatus.Created,
             'active': initialStatus == ServiceStatus.Running,
             'className': serviceClassName,
             'serviceInfoDict': None
@@ -93,76 +77,56 @@ class ServiceManager(object):
     def registerServiceClass(self, serviceClass):
         self.serviceClasses.add(serviceClass)
 
-    def onServiceStatusChanged(self, service: Service, serviceStatus: ServiceStatus):
-        self.serviceStatusChangedEvent(service, serviceStatus)
-        if serviceStatus == ServiceStatus.Starting:
-            self.saveService(service)
-            self.threadPoolExecutor.submit(self.runService, service)
-        elif serviceStatus == ServiceStatus.Disabled:
-            self.saveService(service)
-        else:
-            self.saveServiceStatus(service)
+    def findServiceMonitorInfos(self):
+        lastServiceDicts = self.dbManager.serviceCollection.find({})
+        return {infoDict.get('_id'):ServiceMonitorInfo(infoDict) for infoDict in lastServiceDicts} if lastServiceDicts else dict()
 
-    def addService(self, service: Service, initialStatus = ServiceStatus.Running):
-        if not type(service) in self.serviceClasses:
-            logger.error(f'Unknown service class: {type(service)}')
-            return
+    def monitorServices(self):
+        lastMonitorInfos = self.findServiceMonitorInfos()
 
-        self.services.append(service)
-        service.statusChangedEvent.subscribe(lambda serviceStatus: self.onServiceStatusChanged(service, serviceStatus))
+        while self.isRunning:
+            time.sleep(1.0)
+            
+            try:
+                for i in lastMonitorInfos.values():
+                    i.dirty = True
 
-        if initialStatus == ServiceStatus.Running:
-            service.active = True
-            # The status change will trigger an event that will run the service
-            service.status = ServiceStatus.Starting
-        else:
-            service.status = initialStatus
+                monitorInfos = self.findServiceMonitorInfos()
 
-            if initialStatus == ServiceStatus.Disabled:
-                service.active = False
+                for info in monitorInfos.values():
+                    lastInfo = lastMonitorInfos.get(info.id)
+                    if not lastInfo:
+                        # New service was added:
+                        lastMonitorInfos[info.id] = info
+                        self.addServiceFromDict(info.serviceDict)
+                    else:
+                        lastInfo.dirty = False
+                
+                removedMonitorInfos = [i for i in lastMonitorInfos.values() if i.dirty]
 
-            if initialStatus in [ServiceStatus.ShuttingDown]:
-                logger.error(f'Invalid initial status: {initialStatus}')
+                for removedInfo in removedMonitorInfos:
+                    lastMonitorInfos.pop(removedInfo.id)
+                    # TODO: Remove the service (controller + monitor).
+                    pass
+            except Exception as e:
+                logger.error(f'Failed service monitoring with exception: {str(e)}')
 
-            self.saveService(service)
-
-    def runService(self, service: Service):
-        try:
-            service.run()            
-        except Exception as e:
-            logger.error(f'Service {service.name} failed with exception: {str(e)}')
-            service.status = ServiceStatus.Failed
-
-    def saveService(self, service: Service):
-        serInfo = ServiceSerializationInfo(self.serviceRegistry)
-        serInfo.setupFromService(service)
-
-        self.dbManager.stateCollection.update_one({'_id': 'service_manager'}, [{'$set': {'services': {service.name: serInfo.asDict()}}}], upsert=True)
-
-    def saveServiceStatus(self, service: Service):
-        self.dbManager.stateCollection.update_one({'_id': 'service_manager'}, [{'$set': {'services': {service.name: {'status': service.statusAsString}}}}], upsert=True)
-
-    def saveServiceHost(self, service: Service, hostname: str):
-        self.dbManager.stateCollection.update_one({'_id': 'service_manager'}, [{'$set': {'services': {service.name: {'host': hostname}}}}], upsert=True)
-
-    def removeService(self, service: Service):
-        self.services.remove(service)
-
-    def removeServiceByName(self, serviceName: str):
-        self.services = [service for service in self.services if not service.name == serviceName]
-
+            unblockedServices = self.updateBlockedServices()
+            for s in unblockedServices:
+                self.addServiceFromName(s.serviceName)
+            
     def shutdown(self):
-        for service in self.services:
-            logger.info(f'Shutting down service {service.name} ...')
-            service.status = ServiceStatus.ShuttingDown
+        self.isRunning = False
+
+        for serviceController in self.serviceControllers:
+            serviceController.shutdown()
+
+        for serviceMonitor in self.serviceMonitors:
+            serviceMonitor.shutdown()
 
         logger.info('Waiting for shutdown completion...')
         self.threadPoolExecutor.shutdown(wait=True)
         logger.info('All services were shut down.')
-
-        for service in self.services:
-            service._status = ServiceStatus.Offline
-            self.saveServiceStatus(service)
         
     def save(self, settings, dbManager: MongoDBManager):
         """
@@ -182,11 +146,13 @@ class ServiceManager(object):
             - settings: Must support settings.value(str)
             - dbManager: MongoDBManager
         """
-        state = dbManager.stateCollection.find_one({'_id': "service_manager"})
 
-        if state:
-            for serviceInfoDict in state['services'].values():
+        serviceInfos = dbManager.serviceCollection.find({})
+        if serviceInfos:
+            for serviceInfoDict in serviceInfos:
                 self.addServiceFromDict(serviceInfoDict)
+
+        self.threadPoolExecutor.submit(self.monitorServices)
 
     def getServiceClassFromClassName(self, className: str):
         returnServiceClass = None
@@ -197,22 +163,133 @@ class ServiceManager(object):
 
         return returnServiceClass
 
-    def addServiceFromDict(self, serviceInfoDict: dict):
+    @staticmethod
+    def getServiceProcessId(serviceInfo: ServiceSerializationInfo, serviceClass: Any):
+        serviceTargetRestriction: ServiceTargetRestriction = serviceClass.getServiceTargetRestriction()
+
+        hostname = socket.gethostname()
+        pid = os.getpid()
+
+        if serviceTargetRestriction == ServiceTargetRestriction.Unrestricted:
+            serviceProcessId = f'{serviceInfo.name}_{hostname}_{pid}'
+        elif serviceTargetRestriction == ServiceTargetRestriction.SingleHost:
+            serviceProcessId = f'{serviceInfo.name}_{hostname}'
+        elif serviceTargetRestriction == ServiceTargetRestriction.SingleHostProcess:
+            serviceProcessId = serviceInfo.name
+        else:
+            logger.error(f'Unhandled ServiceTargetRestriction: {serviceTargetRestriction}')
+            return None
+
+        return serviceProcessId
+
+    def insertServiceStatus(self, serviceInfo: ServiceSerializationInfo, serviceClass: Any):
+        """Returns the service process id on success. If this operation fails because the service process with this id is already running None is returned.
+        """
+        hostname = socket.gethostname()
+        pid = os.getpid()
+
+        serviceProcessId = ServiceManager.getServiceProcessId(serviceInfo, serviceClass)
+
+        try:
+            self.dbManager.serviceProcessCollection.insert_one({
+                '_id': serviceProcessId,
+                'name': serviceInfo.name,
+                'status': str(ServiceStatus.Created.value), 
+                'heartbeat_time': datetime.utcnow(),
+                'hostname': hostname,
+                'pid': pid
+                })
+        except:
+            return None
+
+        return serviceProcessId
+
+    def setServiceActive(self, serviceName: str, active: bool):
+        self.updateServiceValue(serviceName, 'active', active)
+
+    def updateServiceValue(self, serviceName: str, key: str, value: Any):
+        self.dbManager.serviceCollection.update_one({'_id': serviceName}, {'$set': {key: value}}, upsert=True)
+
+    def addServiceFromDict(self, serviceInfoDict: dict, newService = False):
+        """Request to add a service from dict. This operation might actually not create a service.
+        Args:
+            serviceInfoDict (dict): Dictionary with information describing the service.
+        """
         serInfo = ServiceSerializationInfo(self.serviceRegistry)
         serInfo.setupFromDict(serviceInfoDict)
+
+        logger.info(f'Trying to add service process of service {serInfo.name}...')
+        
+        if self.isServiceBlocked(serInfo.name):
+            logger.info(f'The service {serInfo.name} is currently blocked due to a previous failure on this host process.')
+            return
+
         serviceClass = self.getServiceClassFromClassName(serInfo.className)
+
         if serviceClass:
-            service, successful = serInfo.constructService(serviceClass)
-
-            if not successful:
-                self.addService(service, initialStatus=ServiceStatus.Failed)
-                return
-
-            # Check service status correctness. It must be either Offline or Disabled eitherwise the application wasn't shut down correctly.
-            if not service.status in [ServiceStatus.Offline, ServiceStatus.Disabled]:
-                service._status = ServiceStatus.Created
-
-            initialStatus = ServiceStatus.Running if service.active else ServiceStatus.Disabled
-            self.addService(service, initialStatus=initialStatus)
+            # First check if the service is active:
+            if serInfo.active:
+                # Try to create a service status and insert in DB. If this operation fails the service is locked to host/host process.
+                serviceProcessId = self.insertServiceStatus(serInfo, serviceClass)
+                if serviceProcessId != None:
+                    serviceController = ServiceProcessController(self.dbManager, self.serviceRegistry, serviceProcessId, serInfo, serviceClass, self.threadPoolExecutor)
+                    serviceController.service.statusChangedEvent.subscribe(lambda status: self.onServiceStatusChanged(serviceController.service, status))
+                    serviceController.submitServiceRunner()
+                    self.serviceControllers.append(serviceController)
+                    logger.info(f'Added service process of service {serInfo.name}.')
+                else:
+                    logger.info(f'Service {serInfo.name} is restricted and is already running on a different host process.')
+            else:
+                logger.info(f'Service {serInfo.name} is disabled.')
         else:
             logger.error(f'Could not find service class for service with class name {serInfo.className}.')
+
+        # Add ServiceMonitor
+        hasServiceMonitor = any(True for m in self.serviceMonitors if m.serviceName == serInfo.name)
+        if not hasServiceMonitor:
+            serviceProcessId = ServiceManager.getServiceProcessId(serInfo, serviceClass)
+            serviceMonitor = ServiceMonitor(serviceInfoDict, self.dbManager, self.threadPoolExecutor)
+            self.serviceMonitors.append(serviceMonitor)
+
+            self.onServiceAdded(ServiceInfo(serviceInfoDict))
+
+            serviceMonitor.onServiceInfoChanged.subscribe(self.onServiceInfoChanged)
+            serviceMonitor.onServiceProcessChanged.subscribe(self.onServiceProcessChanged)
+
+    def findServiceDict(self, serviceName: str):
+        return self.dbManager.serviceCollection.find_one({'_id': serviceName})
+        
+    def addServiceFromName(self, serviceName: str):
+        serviceDict = self.findServiceDict(serviceName)
+        if serviceDict:
+            self.addServiceFromDict(serviceDict)
+
+    def onServiceProcessChanged(self, processInfo: ServiceProcessInfo):
+        if processInfo.status == ServiceStatus.Failed:
+            if not self.isServiceBlocked(processInfo.serviceName):
+                # Try to start the service process on this host process:
+                self.addServiceFromName(processInfo.serviceName)
+
+        self.onServiceProcessChangedEvent(processInfo)
+        
+    def onServiceInfoChanged(self, prevInfo: ServiceInfo, newInfo: ServiceInfo):
+        if prevInfo.active != newInfo.active:
+            self.onServiceActiveStatusChanged(newInfo)
+        
+    def onServiceStatusChanged(self, service: Service, status: ServiceStatus):
+        if status == ServiceStatus.Failed:
+            # Remove the service controller:
+            self.serviceControllers = [c for c in self.serviceControllers if c.service != service]
+            self.blockedServiceInfos.append(ServiceBlockInfo(service.name))
+
+    def updateBlockedServices(self) -> List[ServiceBlockInfo]:
+        """
+        Returns:
+            List[ServiceBlockInfo]: The services that aren't blocked anymore.
+        """
+        notBlocked = [i for i in self.blockedServiceInfos if not i.isBlocked]
+        self.blockedServiceInfos = [i for i in self.blockedServiceInfos if i.isBlocked]
+        return notBlocked
+
+    def isServiceBlocked(self, serviceName: str):
+        return any(True for i in self.blockedServiceInfos if i.isBlocked and i.serviceName == serviceName) > 0
