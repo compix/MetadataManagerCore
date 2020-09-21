@@ -59,8 +59,8 @@ class Service(object,metaclass=ABCMeta):
     def getServiceTargetRestriction() -> ServiceTargetRestriction:
         return ServiceTargetRestriction.SingleHostProcess
 
-    @property
-    def supportsConsoleMode(self):
+    @staticmethod
+    def supportsConsoleMode() -> bool:
         return False
 
     def onStatusChanged(self, status):

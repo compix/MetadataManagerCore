@@ -42,7 +42,7 @@ class ServiceMonitorInfo(object):
         return self.serviceDict.get('_id')
         
 class ServiceManager(object):
-    def __init__(self, dbManager: MongoDBManager, hostProcessController: HostProcessController, serviceRegistry) -> None:
+    def __init__(self, dbManager: MongoDBManager, hostProcessController: HostProcessController, serviceRegistry, consoleMode: bool) -> None:
         super().__init__()
 
         dbManager.serviceProcessCollection.create_index("heartbeat_time", expireAfterSeconds=ServiceProcessController.dyingTimeInSeconds)
@@ -59,6 +59,7 @@ class ServiceManager(object):
         self.onServiceProcessChangedEvent = Event()
         self.onServiceAdded = Event()
         self.blockedServiceInfos : List[ServiceBlockInfo] = []
+        self.consoleMode = consoleMode
 
     @staticmethod
     def createBaseServiceInfoDictionary(serviceClassName: str, serviceName: str, serviceDescription: str, initialStatus: ServiceStatus):
@@ -225,6 +226,9 @@ class ServiceManager(object):
             return
 
         serviceClass = self.getServiceClassFromClassName(serInfo.className)
+        if self.consoleMode and not serviceClass.supportsConsoleMode():
+            logger.info(f'The service {serInfo.name} does not support console mode.')
+            return
 
         if serviceClass:
             # First check if the service is active:
