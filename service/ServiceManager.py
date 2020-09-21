@@ -1,4 +1,4 @@
-from MetadataManagerCore.service.ServiceMonitor import ServiceMonitor
+from MetadataManagerCore.service.ServiceMonitor import ServiceMonitor, ServiceProcessInfo
 import os
 import socket
 from MetadataManagerCore.service.ServiceTargetRestriction import ServiceTargetRestriction
@@ -10,12 +10,36 @@ from MetadataManagerCore.service.Service import Service, ServiceStatus
 from MetadataManagerCore.mongodb_manager import MongoDBManager
 from concurrent.futures import ThreadPoolExecutor
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from MetadataManagerCore.service.ServiceSerializationInfo import ServiceSerializationInfo
 from MetadataManagerCore.service.ServiceInfo import ServiceInfo
 import time
 
 logger = logging.getLogger(__name__)
+
+class ServiceBlockInfo(object):
+    blockDurationInSeconds = 60
+
+    def __init__(self, serviceName: str) -> None:
+        super().__init__()
+
+        self.blockedTime = datetime.utcnow()
+        self.serviceName = serviceName
+
+    @property
+    def isBlocked(self):
+        return datetime.utcnow() - self.blockedTime < timedelta(seconds=ServiceBlockInfo.blockDurationInSeconds)
+
+class ServiceMonitorInfo(object):
+    def __init__(self, serviceDict):
+        super().__init__()
+
+        self.serviceDict = serviceDict
+        self.dirty = False
+
+    @property
+    def id(self):
+        return self.serviceDict.get('_id')
         
 class ServiceManager(object):
     def __init__(self, dbManager: MongoDBManager, hostProcessController: HostProcessController, serviceRegistry) -> None:
@@ -32,8 +56,9 @@ class ServiceManager(object):
         self.serviceMonitors: List[ServiceMonitor] = []
         self.threadPoolExecutor = ThreadPoolExecutor()
         self.onServiceActiveStatusChanged = Event()
-        self.onServiceProcessChanged = Event()
+        self.onServiceProcessChangedEvent = Event()
         self.onServiceAdded = Event()
+        self.blockedServiceInfos : List[ServiceBlockInfo] = []
 
     @staticmethod
     def createBaseServiceInfoDictionary(serviceClassName: str, serviceName: str, serviceDescription: str, initialStatus: ServiceStatus):
@@ -52,23 +77,12 @@ class ServiceManager(object):
     def registerServiceClass(self, serviceClass):
         self.serviceClasses.add(serviceClass)
 
+    def findServiceMonitorInfos(self):
+        lastServiceDicts = self.dbManager.serviceCollection.find({})
+        return {infoDict.get('_id'):ServiceMonitorInfo(infoDict) for infoDict in lastServiceDicts} if lastServiceDicts else dict()
+
     def monitorServices(self):
-        class MonitorInfo(object):
-            def __init__(self, serviceDict):
-                super().__init__()
-
-                self.serviceDict = serviceDict
-                self.dirty = False
-
-            @property
-            def id(self):
-                return self.serviceDict.get('_id')
-
-        def findMonitorInfos():
-            lastServiceDicts = self.dbManager.serviceCollection.find({})
-            return {infoDict.get('_id'):MonitorInfo(infoDict) for infoDict in lastServiceDicts} if lastServiceDicts else dict()
-
-        lastMonitorInfos = findMonitorInfos()
+        lastMonitorInfos = self.findServiceMonitorInfos()
 
         while self.isRunning:
             time.sleep(1.0)
@@ -77,7 +91,7 @@ class ServiceManager(object):
                 for i in lastMonitorInfos.values():
                     i.dirty = True
 
-                monitorInfos = findMonitorInfos()
+                monitorInfos = self.findServiceMonitorInfos()
 
                 for info in monitorInfos.values():
                     lastInfo = lastMonitorInfos.get(info.id)
@@ -96,6 +110,10 @@ class ServiceManager(object):
                     pass
             except Exception as e:
                 logger.error(f'Failed service monitoring with exception: {str(e)}')
+
+            unblockedServices = self.updateBlockedServices()
+            for s in unblockedServices:
+                self.addServiceFromName(s.serviceName)
             
     def shutdown(self):
         self.isRunning = False
@@ -199,6 +217,13 @@ class ServiceManager(object):
         """
         serInfo = ServiceSerializationInfo(self.serviceRegistry)
         serInfo.setupFromDict(serviceInfoDict)
+
+        logger.info(f'Trying to add service process of service {serInfo.name}...')
+        
+        if self.isServiceBlocked(serInfo.name):
+            logger.info(f'The service {serInfo.name} is currently blocked due to a previous failure on this host process.')
+            return
+
         serviceClass = self.getServiceClassFromClassName(serInfo.className)
 
         if serviceClass:
@@ -208,20 +233,63 @@ class ServiceManager(object):
                 serviceProcessId = self.insertServiceStatus(serInfo, serviceClass)
                 if serviceProcessId != None:
                     serviceController = ServiceProcessController(self.dbManager, self.serviceRegistry, serviceProcessId, serInfo, serviceClass, self.threadPoolExecutor)
+                    serviceController.service.statusChangedEvent.subscribe(lambda status: self.onServiceStatusChanged(serviceController.service, status))
+                    serviceController.submitServiceRunner()
                     self.serviceControllers.append(serviceController)
+                    logger.info(f'Added service process of service {serInfo.name}.')
+                else:
+                    logger.info(f'Service {serInfo.name} is restricted and is already running on a different host process.')
+            else:
+                logger.info(f'Service {serInfo.name} is disabled.')
         else:
             logger.error(f'Could not find service class for service with class name {serInfo.className}.')
 
         # Add ServiceMonitor
-        serviceProcessId = ServiceManager.getServiceProcessId(serInfo, serviceClass)
-        serviceMonitor = ServiceMonitor(serviceInfoDict, self.dbManager, self.threadPoolExecutor)
-        self.serviceMonitors.append(serviceMonitor)
+        hasServiceMonitor = any(True for m in self.serviceMonitors if m.serviceName == serInfo.name)
+        if not hasServiceMonitor:
+            serviceProcessId = ServiceManager.getServiceProcessId(serInfo, serviceClass)
+            serviceMonitor = ServiceMonitor(serviceInfoDict, self.dbManager, self.threadPoolExecutor)
+            self.serviceMonitors.append(serviceMonitor)
 
-        self.onServiceAdded(ServiceInfo(serviceInfoDict))
+            self.onServiceAdded(ServiceInfo(serviceInfoDict))
 
-        serviceMonitor.onServiceInfoChanged.subscribe(self.onServiceInfoChanged)
-        serviceMonitor.onServiceProcessChanged.subscribe(self.onServiceProcessChanged)
+            serviceMonitor.onServiceInfoChanged.subscribe(self.onServiceInfoChanged)
+            serviceMonitor.onServiceProcessChanged.subscribe(self.onServiceProcessChanged)
 
+    def findServiceDict(self, serviceName: str):
+        return self.dbManager.serviceCollection.find_one({'_id': serviceName})
+        
+    def addServiceFromName(self, serviceName: str):
+        serviceDict = self.findServiceDict(serviceName)
+        if serviceDict:
+            self.addServiceFromDict(serviceDict)
+
+    def onServiceProcessChanged(self, processInfo: ServiceProcessInfo):
+        if processInfo.status == ServiceStatus.Failed:
+            if not self.isServiceBlocked(processInfo.serviceName):
+                # Try to start the service process on this host process:
+                self.addServiceFromName(processInfo.serviceName)
+
+        self.onServiceProcessChangedEvent(processInfo)
+        
     def onServiceInfoChanged(self, prevInfo: ServiceInfo, newInfo: ServiceInfo):
         if prevInfo.active != newInfo.active:
             self.onServiceActiveStatusChanged(newInfo)
+        
+    def onServiceStatusChanged(self, service: Service, status: ServiceStatus):
+        if status == ServiceStatus.Failed:
+            # Remove the service controller:
+            self.serviceControllers = [c for c in self.serviceControllers if c.service != service]
+            self.blockedServiceInfos.append(ServiceBlockInfo(service.name))
+
+    def updateBlockedServices(self) -> List[ServiceBlockInfo]:
+        """
+        Returns:
+            List[ServiceBlockInfo]: The services that aren't blocked anymore.
+        """
+        notBlocked = [i for i in self.blockedServiceInfos if not i.isBlocked]
+        self.blockedServiceInfos = [i for i in self.blockedServiceInfos if i.isBlocked]
+        return notBlocked
+
+    def isServiceBlocked(self, serviceName: str):
+        return any(True for i in self.blockedServiceInfos if i.isBlocked and i.serviceName == serviceName) > 0

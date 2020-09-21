@@ -1,3 +1,4 @@
+from MetadataManagerCore.Event import Event
 from MetadataManagerCore.mongodb_manager import MongoDBManager
 from concurrent.futures.thread import ThreadPoolExecutor
 from typing import Any
@@ -20,21 +21,26 @@ class ServiceProcessController(object):
         self.serviceProcessId = serviceProcessId
         self.isRunning = True
         self.heartbeatUpdateIntervalInSeconds = 1.0
-        self.service, successful = serviceSerializationInfo.constructService(serviceClass)
+        self._onServiceProcessFailedEvent = Event()
+        self.threadPoolExecutor = threadPoolExecutor
+        self.serviceClass = serviceClass
+        self.service, self.successfulServiceCreation = serviceSerializationInfo.constructService(self.serviceClass)
+        self.statusSerializationFailed = False
         self.saveService()
 
-        self.service.statusChangedEvent.subscribe(self.onServiceStatusChanged)
+        self.service.statusChangedEvent.subscribe(self.onServiceProcessStatusChanged)
 
-        threadPoolExecutor.submit(self.runHeartbeatUpdate)
+    def submitServiceRunner(self):
+        self.threadPoolExecutor.submit(self.runHeartbeatUpdate)
 
-        if successful:
-            threadPoolExecutor.submit(self.runService)
+        if self.successfulServiceCreation:
+            self.threadPoolExecutor.submit(self.runService)
         else:
             self.service.status = ServiceStatus.Failed
             self.updateServiceProcessValue('status', str(ServiceStatus.Failed.value))
 
     def updateServiceProcessValue(self, key: str, value: Any):
-        self.dbManager.serviceProcessCollection.update_one({'_id': self.serviceProcessId}, {'$set': {key: value}}, upsert=True)
+        self.dbManager.serviceProcessCollection.update_one({'_id': self.serviceProcessId}, {'$set': {key: value}}, upsert=False)
 
     def updateServiceValue(self, key: str, value: Any):
         self.dbManager.serviceCollection.update_one({'_id': self.service.name}, {'$set': {key: value}}, upsert=True)
@@ -44,13 +50,25 @@ class ServiceProcessController(object):
         self.isRunning = False
         self.service.status = ServiceStatus.ShuttingDown
     
-    def onServiceStatusChanged(self, serviceStatus: ServiceStatus):
-        self.updateServiceProcessValue('status', str(serviceStatus.value))
+    def onServiceProcessStatusChanged(self, serviceStatus: ServiceStatus):
+        if self.statusSerializationFailed:
+            return
+
+        try:
+            self.updateServiceProcessValue('status', str(serviceStatus.value))
+        except Exception as e:
+            logger.error(f'Status update failed with exception: {str(e)}')
+            self.statusSerializationFailed = True
+            self.service.status = ServiceStatus.Failed
+            self.isRunning = False
+            return
 
         if serviceStatus == ServiceStatus.Starting:
             self.saveService()
         elif serviceStatus == ServiceStatus.Disabled:
             self.updateServiceValue('active', False)
+        elif serviceStatus == ServiceStatus.Failed:
+            self.isRunning = False
 
     def runService(self):
         try:
@@ -61,7 +79,14 @@ class ServiceProcessController(object):
 
     def runHeartbeatUpdate(self):
         while self.isRunning:
-            self.updateServiceProcessValue('heartbeat_time', datetime.utcnow())
+            try:
+                self.updateServiceProcessValue('heartbeat_time', datetime.utcnow())
+            except Exception as e:
+                logger.error(f'Heartbeat update failed with exception: {str(e)}')
+                self.service.status = ServiceStatus.Failed
+                self.isRunning = False
+                break
+
             time.sleep(self.heartbeatUpdateIntervalInSeconds)
 
         # Remove service process
