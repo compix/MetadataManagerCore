@@ -13,7 +13,7 @@ class WatchDogService(Service):
         self.watchedFolder : str = None
         self.watchedFileExtensions : str = None
         self.watchDog : WatchDog = None
-        self.recursive : False
+        self.recursive : bool = False
         self.processExistingFiles = False
         self.fileHandler = None
         self.fileHandlerManager = None
