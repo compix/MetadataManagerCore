@@ -1,3 +1,4 @@
+from MetadataManagerCore.Event import Event
 from typing import Any
 from MetadataManagerCore.mongodb_manager import MongoDBManager
 import socket
@@ -19,6 +20,9 @@ class HostProcess(object):
         self.isRunning = True
         self.lastUpdateTime = None
 
+        self._onRequestedApplicationClose = Event()
+
+        HostProcess.updateMongoDBEntry(self.dbManager, self.hostname, self.pid, 'close', False)
         self.signalHeartbeat()
 
     def runHeartbeat(self):
@@ -62,3 +66,10 @@ class HostProcess(object):
     @staticmethod
     def delete(dbManager: MongoDBManager, hostname: str, pid: int):
         dbManager.hostProcessesCollection.delete_one({'hostname': hostname, 'pid': pid})
+
+    @property
+    def onRequestedApplicationClose(self):
+        return self._onRequestedApplicationClose
+
+    def closeHostApplication(self):
+        self._onRequestedApplicationClose()

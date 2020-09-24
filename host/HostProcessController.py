@@ -15,6 +15,10 @@ class HostProcessInfo(object):
         self.pid = pid
         self.dirty = False
 
+    @property
+    def hostProcessId(self):
+        return f'{self.hostname}_{self.pid}'
+
 class HostProcessController(object):
     def __init__(self, dbManager: MongoDBManager) -> None:
         super().__init__()
@@ -77,28 +81,31 @@ class HostProcessController(object):
                     self._hostProcessInfos[hostProcessId] = HostProcessInfo(hostname, pid)
 
         # Check for host status changes:
-        while self.isRunning:
-            hostProcesses = self.getHostProcesses()
+        try:
+            while self.isRunning:
+                hostProcesses = self.getHostProcesses()
 
-            if hostProcesses:
-                for cachedProcessInfo in self._hostProcessInfos.values():
-                    cachedProcessInfo.dirty = True
+                if hostProcesses:
+                    for cachedProcessInfo in self._hostProcessInfos.values():
+                        cachedProcessInfo.dirty = True
 
-                for processInfo in hostProcesses:
-                    try:
-                        self.checkProcessInfo(processInfo)
-                    except Exception as e:
-                        self.logger.error(f'Host process check failed with exception: {str(e)}')
+                    for processInfo in hostProcesses:
+                        try:
+                            self.checkProcessInfo(processInfo)
+                        except Exception as e:
+                            self.logger.error(f'Host process check failed with exception: {str(e)}')
 
-                removedHostProcessInfos = []
-                for cachedProcessInfo in self._hostProcessInfos.values():
-                    if cachedProcessInfo.dirty:
-                        removedHostProcessInfos.append(cachedProcessInfo)
+                    removedHostProcessInfos = []
+                    for cachedProcessInfo in self._hostProcessInfos.values():
+                        if cachedProcessInfo.dirty:
+                            removedHostProcessInfos.append(cachedProcessInfo)
 
-                for removedHostProcessInfo in removedHostProcessInfos:
-                    self.removeHostProcessInfo(removedHostProcessInfo.hostname, removedHostProcessInfo.pid)
+                    for removedHostProcessInfo in removedHostProcessInfos:
+                        self.removeHostProcessInfo(removedHostProcessInfo.hostname, removedHostProcessInfo.pid)
 
-            time.sleep(1.0)
+                time.sleep(1.0)
+        except Exception as e:
+            self.logger.error(f'wtf: {str(e)}')
 
         self.thisHost.shutdown()
         self.threadPoolExecutor.shutdown(True)
@@ -126,6 +133,15 @@ class HostProcessController(object):
                 HostProcess.delete(self.dbManager, hostname, pid)
                 self.removeHostProcessInfo(hostname, pid)
 
+            # Check for close request:
+            if processInfo.get('close') and hostname == self.thisHost.hostname and pid == self.thisHost.pid:
+                try:
+                    self.thisHost.closeHostApplication()
+                except Exception as e:
+                    self.logger.error(e)
+
+                self.logger.info('WTF')
+
     def getHostProcesses(self) -> dict:
         return self.dbManager.hostProcessesCollection.find({})
 
@@ -137,3 +153,6 @@ class HostProcessController(object):
         self._hostProcessInfos.pop(HostProcessController.getHostProcessId(hostname, pid))
         self.onHostProcessRemovedEvent(hostname, pid)
         
+    def closeHostProcess(self, hostname: str, pid: str):
+        self.logger.info('Close Request.')
+        HostProcess.updateMongoDBEntry(self.dbManager, hostname, pid, 'close', True)
