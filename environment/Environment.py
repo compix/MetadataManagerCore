@@ -10,17 +10,21 @@ class Environment(object):
         self.uniqueEnvironmentId = uniqueEnvironmentId
         self.settingsDict = dict()
         self.displayName = uniqueEnvironmentId
+        self.autoExportPath = ''
 
     def setDisplayName(self, displayName):
         self.displayName = displayName
 
     def getStateDict(self):
-        return {"settings": self.settingsDict, "display_name": self.displayName}
+        return {"settings": self.settingsDict, "display_name": self.displayName, "auto_export_path": self.autoExportPath}
 
     def load(self, stateDict):
         if stateDict != None:
             self.settingsDict = stateDict.get('settings')
             self.setDisplayName(stateDict.get("display_name"))
+            autoExportPath = stateDict.get('auto_export_path')
+            if autoExportPath:
+                self.autoExportPath = autoExportPath
 
     def evaluateSettingsValue(self, value):
         p = re.compile(r'\${(.*)}')
