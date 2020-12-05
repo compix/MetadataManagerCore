@@ -27,7 +27,9 @@ class DocumentActionTask(Task):
         documentFilterString = self.getEntryVerified(dataDict, 'documentFilter')
         distinctionFilterString = self.getEntryVerified(dataDict, 'distinctionFilter')
 
-        customPythonFilterDicts = dataDict.get('customDocumentFilters', {})
+        customPythonFilterDicts = dataDict.get('customDocumentFilters', [])
+        if customPythonFilterDicts != None:
+            customPythonFilterDicts = []
 
         customPythonFilters = []
         for filterDict in customPythonFilterDicts:
@@ -41,8 +43,7 @@ class DocumentActionTask(Task):
             
             if action:
                 if len(collectionNames) == 0:
-                    logger.warn(f"No collections were specified.")
-                    return
+                    raise RuntimeError("No collections were specified.")
 
                 documentFilter = self.documentFilterManager.stringToFilter(documentFilterString)
                 numDocumentsProcessed = 0
@@ -53,6 +54,6 @@ class DocumentActionTask(Task):
                         action.execute(document)
                 
                 if numDocumentsProcessed == 0:
-                    logger.warn("No documents were processed.")
+                    raise RuntimeError("No documents were processed.")
             else:
                 raise RuntimeError(f'Unknown actionId: {actionId}')
