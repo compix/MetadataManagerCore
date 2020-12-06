@@ -10,6 +10,8 @@ class EnvironmentManager(object):
         self.archived_environments : List[Environment] = []
         self.stateDict = dict()
 
+        self.dbManager = None
+
     def addEnvironment(self, env: Environment):
         self.environments.append(env)
 
@@ -38,12 +40,16 @@ class EnvironmentManager(object):
             - settings: Must support settings.setValue(key: str, value)
             - dbManager: MongoDBManager
         """
+        pass
+
+    def saveToDatabase(self):
         environmentsDict = dict()
         for env in self.environments:
             envState = env.getStateDict()
             environmentsDict[env.uniqueEnvironmentId] = envState
 
-        dbManager.db[Keys.STATE_COLLECTION].replace_one({"_id": Keys.ENVIRONMENT_MANAGER_ID}, {"environments": environmentsDict}, upsert=True)
+        if self.dbManager:
+            self.dbManager.db[Keys.STATE_COLLECTION].replace_one({"_id": Keys.ENVIRONMENT_MANAGER_ID}, {"environments": environmentsDict}, upsert=True)
 
     def load(self, settings, dbManager):
         """
@@ -53,6 +59,7 @@ class EnvironmentManager(object):
             - settings: Must support settings.value(str)
             - dbManager: MongoDBManager
         """
+        self.dbManager = dbManager
         state = dbManager.db[Keys.STATE_COLLECTION].find_one({"_id": Keys.ENVIRONMENT_MANAGER_ID})
 
         if state != None:
@@ -72,7 +79,7 @@ class EnvironmentManager(object):
 
     def archive(self, dbManager : MongoDBManager, environment : Environment):
         self.environments = [env for env in self.environments if env.uniqueEnvironmentId != environment.uniqueEnvironmentId]
-        self.save(dbManager)
+        self.saveToDatabase()
 
         envState = environment.getStateDict()
         state = dbManager.db[Keys.STATE_COLLECTION].find_one({"_id": Keys.ARCHIVED_ENVIRONMENTS_ID})

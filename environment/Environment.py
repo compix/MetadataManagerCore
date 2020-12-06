@@ -1,6 +1,11 @@
 from MetadataManagerCore import Keys
 import json
 import re
+from enum import Enum
+
+class EnvironmentTarget(Enum):
+    Production = 'production'
+    Preview = 'preview'
 
 class Environment(object):
     """
@@ -58,3 +63,11 @@ class Environment(object):
         """
         return self.settingsDict
 
+    @property
+    def target(self) -> EnvironmentTarget:
+        settingsDict = self.getEvaluatedSettings()
+        curTarget = settingsDict.get('target')
+        if curTarget:
+            return EnvironmentTarget(curTarget)
+        
+        return None
