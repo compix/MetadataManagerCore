@@ -105,7 +105,7 @@ class HostProcessController(object):
 
                 time.sleep(1.0)
         except Exception as e:
-            self.logger.error(f'wtf: {str(e)}')
+            self.logger.error(str(e))
 
         self.thisHost.shutdown()
         self.threadPoolExecutor.shutdown(True)
@@ -139,8 +139,6 @@ class HostProcessController(object):
                     self.thisHost.closeHostApplication()
                 except Exception as e:
                     self.logger.error(e)
-
-                self.logger.info('WTF')
 
     def getHostProcesses(self) -> dict:
         return self.dbManager.hostProcessesCollection.find({})
