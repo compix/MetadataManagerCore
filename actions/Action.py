@@ -1,6 +1,11 @@
 from MetadataManagerCore.actions.ActionType import ActionType
 
 class Action(object):
+    def __init__(self) -> None:
+        super().__init__()
+
+        self.linkedCollections = []
+
     def execute(self):
         pass
 

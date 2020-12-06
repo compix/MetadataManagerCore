@@ -16,6 +16,8 @@ class ActionManager(object):
         self.m_unlinkActionFromCollectionEvent = Event()
         self.m_registerActionEvent = Event()
 
+        self.dbManager = None
+
     @property
     def registerActionEvent(self) -> Event:
         """
@@ -72,8 +74,7 @@ class ActionManager(object):
             - settings: Must support settings.setValue(key: str, value)
             - dbManager: MongoDBManager
         """
-        collectionToActionMapAsJson = json.dumps(self.collectionToActionsMap)
-        dbManager.db[Keys.STATE_COLLECTION].replace_one({"_id":Keys.ACTION_MANAGER_ID}, {"collectionToActionMapAsJson": collectionToActionMapAsJson}, upsert=True)
+        pass
 
     def load(self, settings, dbManager):
         """
@@ -83,12 +84,18 @@ class ActionManager(object):
             - settings: Must support settings.value(str)
             - dbManager: MongoDBManager
         """
+        self.dbManager = dbManager
         actionManagerState = dbManager.db[Keys.STATE_COLLECTION].find_one({"_id":Keys.ACTION_MANAGER_ID})
 
         if actionManagerState != None:
             collectionToActionMapAsJson = actionManagerState.get('collectionToActionMapAsJson')
             if collectionToActionMapAsJson != None:
                 self.collectionToActionsMap = json.loads(collectionToActionMapAsJson)
+
+    def saveToDatabase(self):
+        collectionToActionMapAsJson = json.dumps(self.collectionToActionsMap)
+        if self.dbManager:
+            self.dbManager.db[Keys.STATE_COLLECTION].replace_one({"_id":Keys.ACTION_MANAGER_ID}, {"collectionToActionMapAsJson": collectionToActionMapAsJson}, upsert=True)
 
     def unregisterAction(self, action):
         if action != None:
@@ -127,6 +134,8 @@ class ActionManager(object):
 
         self.m_linkActionToCollectionEvent(actionId, collectionName)
 
+        self.saveToDatabase()
+
     def unlinkActionFromCollection(self, actionId, collectionName):
         self.collectionToActionsMap[collectionName].remove(actionId)
 
@@ -136,6 +145,8 @@ class ActionManager(object):
 
         self.m_unlinkActionFromCollectionEvent(actionId, collectionName)
         
+        self.saveToDatabase()
+
     def getCollectionActionIds(self, collectionName):
         actionIds = self.collectionToActionsMap.get(collectionName)
         return actionIds if actionIds != None else []

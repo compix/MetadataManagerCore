@@ -5,8 +5,6 @@ class DocumentAction(Action):
     def __init__(self):
         super().__init__()
 
-        self.linkedCollections = []
-
     @property
     def id(self):
         return self.__class__.__name__
