@@ -123,3 +123,7 @@ class EnvironmentManager(object):
     def checkForChanges(self):
         if self.changeMonitor:
             self.changeMonitor.checkForChanges()
+
+    def shutdown(self):
+        if self.changeMonitor:
+            self.changeMonitor.stopAndJoin()
