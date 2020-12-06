@@ -1,16 +1,30 @@
+from MetadataManagerCore.monitor.DatabaseSingleEntryChangeMonitor import DatabaseSingleEntryChangeMonitor
 from MetadataManagerCore.environment.Environment import Environment
 from MetadataManagerCore.mongodb_manager import MongoDBManager
 from MetadataManagerCore import Keys
-import json
 from typing import List
+from MetadataManagerCore.Event import Event
+
+class EnvironmentManagerChangeMonitor(DatabaseSingleEntryChangeMonitor):
+    def __init__(self, dbManager: MongoDBManager, collection: str, id: str, envManager) -> None:
+        super().__init__(dbManager, collection, id)
+
+        self.envManager = envManager
+
+    def getCurrentState(self) -> dict:
+        return self.envManager.getCurrentState()
+
+    def onStateChanged(self):
+        self.envManager.updateState()
+        self.envManager.onStateChanged()
 
 class EnvironmentManager(object):
     def __init__(self):
         self.environments : List[Environment] = []
-        self.archived_environments : List[Environment] = []
-        self.stateDict = dict()
 
         self.dbManager = None
+        self.changeMonitor = None
+        self.onStateChanged = Event()
 
     def addEnvironment(self, env: Environment):
         self.environments.append(env)
@@ -42,14 +56,14 @@ class EnvironmentManager(object):
         """
         pass
 
-    def saveToDatabase(self):
-        environmentsDict = dict()
-        for env in self.environments:
-            envState = env.getStateDict()
-            environmentsDict[env.uniqueEnvironmentId] = envState
+    def getCurrentState(self) -> dict:
+        return {
+            "environments": {env.uniqueEnvironmentId:env.getStateDict() for env in self.environments}
+        }
 
+    def saveToDatabase(self):
         if self.dbManager:
-            self.dbManager.db[Keys.STATE_COLLECTION].replace_one({"_id": Keys.ENVIRONMENT_MANAGER_ID}, {"environments": environmentsDict}, upsert=True)
+            self.dbManager.db[Keys.STATE_COLLECTION].replace_one({"_id": Keys.ENVIRONMENT_MANAGER_ID}, self.getCurrentState(), upsert=True)
 
     def load(self, settings, dbManager):
         """
@@ -60,16 +74,26 @@ class EnvironmentManager(object):
             - dbManager: MongoDBManager
         """
         self.dbManager = dbManager
-        state = dbManager.db[Keys.STATE_COLLECTION].find_one({"_id": Keys.ENVIRONMENT_MANAGER_ID})
+        self.loadFromDatabase()
 
-        if state != None:
-            environmentsDict = state.get("environments")
+        self.changeMonitor = EnvironmentManagerChangeMonitor(self.dbManager, Keys.STATE_COLLECTION, Keys.ENVIRONMENT_MANAGER_ID, self)
+        self.changeMonitor.checkIntervalInSeconds = 5.0
+        self.changeMonitor.runAsync()
 
-            if environmentsDict != None:
-                for envId, envState in environmentsDict.items():
-                    env = Environment(envId)
-                    env.load(envState)
-                    self.addEnvironment(env)
+    def loadFromDatabase(self):
+        if self.dbManager:
+            state = self.dbManager.db[Keys.STATE_COLLECTION].find_one({"_id": Keys.ENVIRONMENT_MANAGER_ID})
+            if state != None:
+                environmentsDict = state.get("environments")
+
+                if environmentsDict != None:
+                    for envId, envState in environmentsDict.items():
+                        env = next((env for env in self.environments if env.uniqueEnvironmentId == envId), None)
+                        if not env:
+                            env = Environment(envId)
+                            self.addEnvironment(env)
+
+                        env.load(envState)
 
     def isValidEnvironmentId(self, id):
         return id != None and id != ""
@@ -92,3 +116,10 @@ class EnvironmentManager(object):
 
         archivedEnvs[environment.uniqueEnvironmentId] = envState
         dbManager.db[Keys.STATE_COLLECTION].replace_one({"_id": Keys.ARCHIVED_ENVIRONMENTS_ID}, {"environments": archivedEnvs}, upsert=True)
+
+    def updateState(self):
+        self.loadFromDatabase()
+
+    def checkForChanges(self):
+        if self.changeMonitor:
+            self.changeMonitor.checkForChanges()
