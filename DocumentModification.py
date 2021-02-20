@@ -1,10 +1,15 @@
+from typing import Tuple
 from MetadataManagerCore import Keys
 import pymongo
 from enum import Enum
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 class DocOpResult(Enum):
-    Successful = 0
-    MergeConflict = 1
+    Successful = 1
+    MergeConflict = 2
 
 class DocumentOperation:
     """
@@ -25,7 +30,7 @@ class DocumentOperation:
     def getId(self, version):
         return self.sid + "_" + str(version)
 
-    def applyOperation(self, checkForModifications):
+    def applyOperation(self, checkForModifications) -> Tuple[dict, DocOpResult]:
         """
         Applies the document operation. If the operation was successful DocOpResult.Successful is returned otherwise
         there was a merge conflict and thus DocOpResult.MergeConflict is returned.
@@ -48,7 +53,7 @@ class DocumentOperation:
                             break
 
                     if allDataEntriesEqual:
-                        return DocOpResult.Successful
+                        return newDict, DocOpResult.Successful
                     
                 # Move old version to versioning collection:
                 self.versionCollection.insert_one(currentDocument)
@@ -61,10 +66,8 @@ class DocumentOperation:
                 newVersion = self.version + 1
                 newDict[Keys.systemVersionKey] = newVersion
             else:
-                print("The document with sid " + self.sid + " was modified by a different user.")
-                return DocOpResult.MergeConflict
-                # TODO: Handle modification conflict, show a side by side comparison of the remote data and local changes.
-                #       Note: The user has to actively resolve the conflict.
+                logger.warning("The document with sid " + self.sid + " was modified by a different user.")
+                return None, DocOpResult.MergeConflict
         else:
             # Adding a new document, define the values:
             newDict = self.dataDict
@@ -76,10 +79,10 @@ class DocumentOperation:
         try:
             newDict['_id'] = self.getId(newVersion)
             self.collection.insert_one(newDict)
-            return DocOpResult.Successful
+            return newDict, DocOpResult.Successful
         except pymongo.errors.PyMongoError as e:
-            print(str(e))
-            return DocOpResult.MergeConflict
+            logger.error(str(e))
+            return None, DocOpResult.MergeConflict
                 
     def getNewestDocument(self):
         return self.collection.find_one({Keys.systemIDKey:self.sid})

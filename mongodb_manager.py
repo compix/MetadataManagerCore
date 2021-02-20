@@ -1,11 +1,12 @@
 import pymongo
 from MetadataManagerCore import Keys
 from bson import Code
-from MetadataManagerCore.DocumentModification import DocumentOperation
+from MetadataManagerCore.DocumentModification import DocOpResult, DocumentOperation
 import numpy as np
 import json
 import logging
-from typing import List
+from typing import List, Tuple
+from MetadataManagerCore.Event import Event
 
 class CollectionHeaderKeyInfo(object):
     MD_KEY = "key"
@@ -28,6 +29,7 @@ class MongoDBManager:
         self.host = host
         self.databaseName = databaseName
         self.db = None
+        self.onDocumentModifiedEvent = Event()
 
     def connect(self):
         self.client = pymongo.MongoClient(self.host)
@@ -73,6 +75,15 @@ class MongoDBManager:
                         displayed = keyInfo.get(CollectionHeaderKeyInfo.MD_DISPLAYED)
 
                         infos.append(CollectionHeaderKeyInfo(key, displayName, displayed))
+            else:
+                # New collection without header info. Extract default info (everything visible) and add it to db
+                newInfos = []
+                keys = self.findAllKeysInCollection(collectionName)
+                for key in keys:
+                    newInfos.append(CollectionHeaderKeyInfo(key, key, True))
+
+                self.setCollectionHeaderInfo(collectionName, newInfos)
+                infos += newInfos
 
         return infos
 
@@ -90,14 +101,18 @@ class MongoDBManager:
         self.db.drop_collection(tempResultCollection)
         return keys
 
-    def insertOrModifyDocument(self, collectionName, sid, dataDict, checkForModifications):
+    def insertOrModifyDocument(self, collectionName, sid, dataDict, checkForModifications) -> Tuple[dict, DocOpResult]:
         """
         If checkForModifications is true, the new document will be compared to the old document (if present). 
         If the documents are identical the DB entry for the given sid won't be changed.
         """
         op = DocumentOperation(self.db, collectionName, sid, dataDict)
 
-        op.applyOperation(checkForModifications)
+        document, result = op.applyOperation(checkForModifications)
+        if result == DocOpResult.Successful:
+            self.onDocumentModifiedEvent(document)
+
+        return document, result
 
     def getFilteredDocuments(self, collectionName, documentsFilter : dict, distinctionText=''):
         collection = self.db[collectionName]
