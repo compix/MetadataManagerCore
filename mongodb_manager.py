@@ -45,7 +45,7 @@ class MongoDBManager:
 
     def getVisibleCollectionNames(self):
         for cn in self.getCollectionNames():
-            if not cn in Keys.hiddenCollections:
+            if not cn in Keys.hiddenCollections and not cn.endswith(Keys.OLD_VERSIONS_COLLECTION_SUFFIX):
                 yield cn
 
     def findOne(self, uid):
