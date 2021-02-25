@@ -9,6 +9,7 @@ class Action(object):
         self.linkedCollections = []
         self.progressUpdateEvent = Event()
         self.currentProgress = 0
+        self.currentProgressMessage = progressMessage
 
     def execute(self):
         pass
@@ -20,7 +21,8 @@ class Action(object):
             progress (float): Expected value in [0,1].
         """
         self.currentProgress = max(min(progress, 1.0), 0.0)
-        self.progressUpdateEvent(progress, progressMessage)
+        self.currentProgressMessage = progressMessage
+        self.progressUpdateEvent(self, progress, progressMessage)
         
     @property
     def actionType(self):
