@@ -116,21 +116,22 @@ class MongoDBManager:
 
     def getFilteredDocuments(self, collectionName, documentsFilter : dict, distinctionText=''):
         collection = self.db[collectionName]
-        filtered = collection.find(documentsFilter)
+        filteredCursor = collection.find(documentsFilter, no_cursor_timeout=True)
         distinctKey = distinctionText
         
-        if len(distinctKey) > 0:
-            distinctKeys = filtered.distinct(distinctKey if distinctKey != None else '')
-            distinctMap = dict(zip(distinctKeys, np.repeat(False, len(distinctKeys))))
-            for item in filtered:
-                val = item.get(distinctKey)
-                if val != None:
-                    if not distinctMap.get(val):
-                        distinctMap[val] = True
-                        yield item
-        else:
-            for item in filtered:
-                yield item
+        with filteredCursor:
+            if len(distinctKey) > 0:
+                distinctKeys = filteredCursor.distinct(distinctKey if distinctKey != None else '')
+                distinctMap = dict(zip(distinctKeys, np.repeat(False, len(distinctKeys))))
+                for item in filteredCursor:
+                    val = item.get(distinctKey)
+                    if val != None:
+                        if not distinctMap.get(val):
+                            distinctMap[val] = True
+                            yield item
+            else:
+                for item in filteredCursor:
+                    yield item
 
     def stringToFilter(self, filterString : str) -> dict:
         try:
