@@ -9,7 +9,7 @@ class Action(object):
         self.linkedCollections = []
         self.progressUpdateEvent = Event()
         self.currentProgress = 0
-        self.currentProgressMessage = progressMessage
+        self.currentProgressMessage = None
 
     def execute(self):
         pass
