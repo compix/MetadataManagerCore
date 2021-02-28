@@ -57,6 +57,9 @@ class DocumentFilterManager(object):
         self.onFilterListUpdateEvent()
 
     def applyFilters(self, document, filters : List[DocumentFilter]):
+        if filters == None:
+            return True
+
         for docFilter in filters:
             if not docFilter.apply(document):
                 return False
@@ -64,9 +67,18 @@ class DocumentFilterManager(object):
         return True
 
     def yieldFilteredDocuments(self, collectionName : str, mongodbFilter : dict = {}, distinctionText : str = '', filters : List[DocumentFilter] = None):
+        if filters == None:
+            filters = []
+
+        for filter in filters:
+            filter.preApply()
+            
         for document in self.dbManager.getFilteredDocuments(collectionName, mongodbFilter, distinctionText):
             if self.applyFilters(document, filters):
                 yield document
+
+        for filter in filters:
+            filter.postApply()
 
     def hasPreviewFilter(self, document):
         try:

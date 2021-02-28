@@ -25,6 +25,12 @@ class DocumentFilter(object):
         else:
             return True
 
+    def preApply(self):
+        pass
+
+    def postApply(self):
+        pass
+
     def asDict(self):
         """Returns the filter document as a dictionary excluding the filter function.
         """
