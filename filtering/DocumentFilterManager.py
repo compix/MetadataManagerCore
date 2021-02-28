@@ -46,6 +46,16 @@ class DocumentFilterManager(object):
 
         self.onFilterListUpdateEvent()
 
+    def insertFilter(self, documentFilter: DocumentFilter, idx: int):
+        # Do not add duplicates:
+        customFilter = self.getFilterFromLabel(documentFilter.uniqueFilterLabel)
+        if customFilter:
+            self.customFilters.remove(customFilter)
+
+        self.customFilters.insert(idx, documentFilter)
+
+        self.onFilterListUpdateEvent()
+
     def applyFilters(self, document, filters : List[DocumentFilter]):
         for docFilter in filters:
             if not docFilter.apply(document):
