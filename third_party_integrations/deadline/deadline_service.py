@@ -1,3 +1,4 @@
+from MetadataManagerCore import Keys
 import sys
 import os
 import subprocess
@@ -60,14 +61,15 @@ class DeadlineService(object):
     def printCmdLineFallback(self):
         self.printMsg(f"\n\nTrying command line fallback with deadline command at path {self.info.deadlineCmdPath}...")
 
-    def runDeadlineCmd(self, cmd):
+    def runDeadlineCmd(self, cmd, quiet=False):
         output = None
         if os.path.exists(self.info.deadlineCmdPath):
             try:
                 p = subprocess.Popen(f"\"{os.path.normpath(self.info.deadlineCmdPath)}\" {cmd}", stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
                 output = p.stdout.read()
                 output = output.decode("windows-1252",'backslashreplace')
-                self.printMsg(output)
+                if not quiet:
+                    self.printMsg(output)
             except Exception as e:
                 self.printMsg(str(e))
         else:
@@ -235,6 +237,34 @@ class DeadlineService(object):
         curLocation = os.path.abspath(os.path.dirname(__file__))
         return self.installDeadlinePlugin(os.path.join(curLocation, "plugins", pluginName))
 
+    def getJobNames(self, quiet=False):
+        if not quiet:
+            self.printMsg(f"Retrieving jobs...")
+
+        if self.webserviceConnectionEstablished:
+            try:
+                jobs = self.deadlineConnection.Jobs.GetJobs()
+                return [job['Props']['Name'] for job in jobs]
+            except Exception as e:
+                self.printMsg(str(e))
+
+                if not quiet:
+                    self.printCmdLineFallback()
+
+        cmd = '-getjobs'
+        cmdOutput = self.runDeadlineCmd(cmd, quiet=True)
+
+        if isinstance(cmdOutput, str):
+            errorMatch = re.search('Error:(.*)', cmdOutput)
+            
+            if not errorMatch:
+                jobNames = re.findall('JobName=(.*)\n', cmdOutput)
+
+                if jobNames != None:
+                    return [jobName.strip() for jobName in jobNames]
+
+        return None
+
     def save(self, settings, dbManager):
         """
         Serializes the state in settings and/or in the database.
@@ -244,6 +274,13 @@ class DeadlineService(object):
             - dbManager: MongoDBManager
         """
         settings.setValue("deadline_service", self.info.__dict__)
+
+        deadlineStandaloneInfo = {
+            'standalone_path': self.info.deadlineStandalonePythonPackagePath,
+            'host': self.info.webserviceHost,
+            'port': self.info.webservicePort
+        }
+        dbManager.db[Keys.STATE_COLLECTION].replace_one({"_id": Keys.DEADLINE_SERVICE_ID}, deadlineStandaloneInfo, upsert=True)
 
     def load(self, settings, dbManager):
         """
@@ -259,3 +296,7 @@ class DeadlineService(object):
             info = DeadlineServiceInfo()
             info.__dict__ = infoDict
             self.updateInfo(info)
+
+        state = dbManager.db[Keys.STATE_COLLECTION].find_one({"_id": Keys.DEADLINE_SERVICE_ID})
+        if state != None:
+            self.info.initWebservice(state.get('standalone_path'), state.get('host'), state.get('port'))
