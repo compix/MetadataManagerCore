@@ -129,8 +129,10 @@ class DeadlineService(object):
             try:
                 job = self.deadlineConnection.Jobs.SubmitJobFiles(jobInfoFilename, pluginInfoFilename, aux=auxiliaryFilenames, idOnly=returnJobIdOnly)
                 if job != None and not quiet:
-                    self.printMsg(f"Successfully submitted job with id {job['_id']}")
-                return job['_id']
+                    jobId = job if returnJobIdOnly else job['_id']
+                    self.printMsg(f"Successfully submitted job with id {jobId}")
+
+                return job
             except Exception as e:
                 self.printMsg(str(e))
 
