@@ -1,5 +1,5 @@
 class DocumentFilter(object):
-    def __init__(self, filterFunction, uniqueFilterLabel : str, active : bool = False, hasStringArg : bool = False) -> None:
+    def __init__(self, filterFunction = None, uniqueFilterLabel : str = None, active : bool = False, hasStringArg : bool = False) -> None:
         super().__init__()
 
         self.filterFunction = filterFunction
@@ -24,6 +24,12 @@ class DocumentFilter(object):
             return filterFuncResult if not self.negate else not filterFuncResult
         else:
             return True
+
+    def copy(self):
+        f = self.__class__()
+        f.filterFunction = self.filterFunction
+        f.setFromDict(self.asDict())
+        return f
 
     def preApply(self):
         pass
