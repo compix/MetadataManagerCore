@@ -1,3 +1,4 @@
+from typing import List
 from MetadataManagerCore import Keys
 import sys
 import os
@@ -9,6 +10,8 @@ import distutils
 from distutils import dir_util
 import shutil
 import logging
+import requests
+import json
 
 class DeadlineServiceInfo(object):
     def __init__(self):
@@ -17,11 +20,9 @@ class DeadlineServiceInfo(object):
         self.deadlineInstallPath = ""
         self.webserviceHost = ""
         self.webservicePort = 8082
-        self.deadlineStandalonePythonPackagePath = ""
         self.deadlineRepositoryLocation = r"C:\DeadlineRepository10"
 
-    def initWebservice(self, deadlineStandalonePythonPackagePath, hostName, port=8082):
-        self.deadlineStandalonePythonPackagePath = deadlineStandalonePythonPackagePath
+    def initWebservice(self, hostName, port=8082):
         self.webserviceHost = hostName
         self.webservicePort = port
 
@@ -50,10 +51,12 @@ class DeadlineService(object):
         self.lock = threading.Lock()
 
         self.updateInfo(info)
-        self.deadlineConnection = None
         self.webserviceConnectionEstablished = False
 
         self.logger = logging.getLogger(__name__)
+
+        logging.getLogger("requests").setLevel(logging.WARNING)
+        logging.getLogger("urllib3").setLevel(logging.WARNING)
 
     def printMsg(self, msg):
         self.logger.info(msg)
@@ -81,6 +84,32 @@ class DeadlineService(object):
     def updateInfo(self, info: DeadlineServiceInfo):
         self.info = info
 
+    def fullRequestRoute(self, relRoute: str):
+        return f'http://{self.info.webserviceHost}:{self.info.webservicePort}/{relRoute}'
+
+    def requestGET(self, route: str):
+        return self.checkResponse(requests.get(self.fullRequestRoute(route)))
+
+    def requestPOST(self, route: str, body):
+        return self.checkResponse(requests.post(self.fullRequestRoute(route), body))
+
+    def requestSubmitJob(self, jobInfo: dict, pluginInfo: dict, auxFiles: List[str] = None, returnJobIdOnly = False):
+        if auxFiles == None:
+            auxFiles = []
+
+        body = '{"JobInfo":'+json.dumps(jobInfo)+',"PluginInfo":'+json.dumps(pluginInfo)+',"AuxFiles":'+json.dumps(auxFiles)
+        if returnJobIdOnly:
+            body += ',"IdOnly":true'
+        body += '}'
+
+        return self.requestPOST('api/jobs', body)
+
+    def checkResponse(self, r):
+        if not r.ok:
+            raise RuntimeError(f'Failed to connect to the deadline webservice. Please make sure the webservice is running on the specified address: {self.info.webserviceHost}:{self.info.webservicePort}. Status Code: {r.status_code}')
+        
+        return r
+
     @threadLocked
     def connect(self):
         """
@@ -91,20 +120,10 @@ class DeadlineService(object):
 
             # Get deadline version and check if the connection can be established:
             try:
-                if os.path.exists(self.info.deadlineStandalonePythonPackagePath):
-                    if self.info.deadlineStandalonePythonPackagePath not in sys.path:
-                        sys.path.append(os.path.abspath(os.path.join(self.info.deadlineStandalonePythonPackagePath, os.pardir)))
-                        sys.path.append(self.info.deadlineStandalonePythonPackagePath)
-                else:
-                    raise Exception(f"Could not find deadline standalone python package path {self.info.deadlineStandalonePythonPackagePath}")
+                r = self.requestGET('')
 
-                from Deadline.DeadlineConnect import DeadlineCon
-                
-                self.deadlineConnection = DeadlineCon(self.info.webserviceHost, self.info.webservicePort)
-
-                deadlineVersion = self.deadlineConnection.Repository.GetDeadlineVersion()
                 self.printMsg(f"Established connection with deadline webservice on host {self.info.webserviceHost} via port {self.info.webservicePort}.")
-                self.printMsg(f"Deadline version: {deadlineVersion}")
+                self.printMsg(r.text)
                 self.webserviceConnectionEstablished = True
             except Exception as e:
                 self.printMsg(str(e))
@@ -125,42 +144,11 @@ class DeadlineService(object):
         if not quiet:
             self.printMsg(f"Submitting job {jobInfoFilename} with plugin info {pluginInfoFilename}...")
 
-        if self.webserviceConnectionEstablished:
-            try:
-                job = self.deadlineConnection.Jobs.SubmitJobFiles(jobInfoFilename, pluginInfoFilename, aux=auxiliaryFilenames, idOnly=returnJobIdOnly)
-                if job != None and not quiet:
-                    jobId = job if returnJobIdOnly else job['_id']
-                    self.printMsg(f"Successfully submitted job with id {jobId}")
-
-                return job
-            except Exception as e:
-                self.printMsg(str(e))
-
-                if not quiet:
-                    self.printCmdLineFallback()
-        
         auxFilesStr = " ".join([f"\"{os.path.normpath(auxFile)}\"" for auxFile in auxiliaryFilenames])
         cmd = f"\"{os.path.normpath(jobInfoFilename)}\" \"{os.path.normpath(pluginInfoFilename)}\" {auxFilesStr}"
 
-        """
-        argsFile = tempfile.mkstemp(suffix="_deadline_args.txt")[1]
-
-        with open(argsFile, mode="w+") as f:
-            f.write("-SubmitMultipleJobs\n-job\n")
-            f.write(f"{os.path.normpath(jobInfoFilename)}\n")
-            f.write(f"{os.path.normpath(pluginInfoFilename)}\n")
-
-            for auxFile in auxiliaryFilenames:
-                f.write(f"\n{os.path.normpath(auxFile)}")
-        
-
-        cmd = f"\"{os.path.normpath(argsFile)}\""
-        """
-
         cmdOutput = self.runDeadlineCmd(cmd)
         
-        #os.remove(argsFile)
-
         if isinstance(cmdOutput, str):
             errorMatch = re.search('Error:(.*)', cmdOutput)
 
@@ -177,6 +165,23 @@ class DeadlineService(object):
     Returns the submitted job as dictionary if the submission was successful otherwise an exception is thrown.
     """
     def submitJob(self, jobInfoDict, pluginInfoDict, auxiliaryFilenames=None, quiet=False, returnJobIdOnly=False):
+        if self.webserviceConnectionEstablished:
+            try:
+                r = self.requestSubmitJob(jobInfoDict, pluginInfoDict, auxiliaryFilenames, returnJobIdOnly=returnJobIdOnly)
+                job = r.json()
+
+                if not quiet:
+                    jobId = job['_id']
+                    self.printMsg(f"Successfully submitted job with id {jobId}")
+
+                return job['_id'] if returnJobIdOnly else job
+            except Exception as e:
+                self.printMsg(str(e))
+
+                if not quiet:
+                    self.printCmdLineFallback()
+
+
         jobInfoFilenameHandle, jobInfoFilename = tempfile.mkstemp(suffix=".txt")
         if not quiet:
             self.printMsg(f"Created temp job info file: {jobInfoFilename}")
@@ -245,7 +250,9 @@ class DeadlineService(object):
 
         if self.webserviceConnectionEstablished:
             try:
-                jobs = self.deadlineConnection.Jobs.GetJobs()
+                r = self.requestGET('api/jobs')
+                jobs = r.json()
+
                 return [job['Props']['Name'] for job in jobs]
             except Exception as e:
                 self.printMsg(str(e))
@@ -301,4 +308,4 @@ class DeadlineService(object):
 
         state = dbManager.db[Keys.STATE_COLLECTION].find_one({"_id": Keys.DEADLINE_SERVICE_ID})
         if state != None:
-            self.info.initWebservice(state.get('standalone_path'), state.get('host'), state.get('port'))
+            self.info.initWebservice(state.get('host'), state.get('port'))
