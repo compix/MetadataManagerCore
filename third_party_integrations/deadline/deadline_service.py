@@ -285,7 +285,6 @@ class DeadlineService(object):
         settings.setValue("deadline_service", self.info.__dict__)
 
         deadlineStandaloneInfo = {
-            'standalone_path': self.info.deadlineStandalonePythonPackagePath,
             'host': self.info.webserviceHost,
             'port': self.info.webservicePort
         }
