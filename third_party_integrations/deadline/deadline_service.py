@@ -12,6 +12,7 @@ import shutil
 import logging
 import requests
 import json
+from MetadataManagerCore.mongodb_manager import MongoDBManager
 
 class DeadlineServiceInfo(object):
     def __init__(self):
@@ -52,6 +53,7 @@ class DeadlineService(object):
 
         self.updateInfo(info)
         self.webserviceConnectionEstablished = False
+        self.dbManager: MongoDBManager  = None
 
         self.logger = logging.getLogger(__name__)
 
@@ -94,15 +96,31 @@ class DeadlineService(object):
         return self.checkResponse(requests.post(self.fullRequestRoute(route), body))
 
     def requestSubmitJob(self, jobInfo: dict, pluginInfo: dict, auxFiles: List[str] = None, returnJobIdOnly = False):
-        if auxFiles == None:
-            auxFiles = []
+        # Copy the auxFiles to repository to make them accessible in a network
+        auxFileDir = None
+        auxFilesInRepo = []
+        try:
+            if auxFiles and len(auxFiles) > 0:
+                auxFilesDir = os.path.join(self.info.deadlineRepositoryLocation, 'temp_auxfiles')
+                os.makedirs(auxFilesDir, exist_ok=True)
+                auxFileDir = tempfile.mkdtemp(dir=auxFilesDir)
+                for auxFile in auxFiles:
+                    copiedAuxFilename = shutil.copy(auxFile, os.path.join(auxFileDir, os.path.basename(auxFile)))
+                    auxFilesInRepo.append(copiedAuxFilename)
 
-        body = '{"JobInfo":'+json.dumps(jobInfo)+',"PluginInfo":'+json.dumps(pluginInfo)+',"AuxFiles":'+json.dumps(auxFiles)
-        if returnJobIdOnly:
-            body += ',"IdOnly":true'
-        body += '}'
+            body = '{"JobInfo":'+json.dumps(jobInfo)+',"PluginInfo":'+json.dumps(pluginInfo)+',"AuxFiles":'+json.dumps(auxFilesInRepo)
+            if returnJobIdOnly:
+                body += ',"IdOnly":true'
+            body += '}'
 
-        return self.requestPOST('api/jobs', body)
+            r = self.requestPOST('api/jobs', body)
+        except:
+            raise
+        finally:
+            if auxFileDir:
+                shutil.rmtree(auxFileDir)
+
+        return r.json()
 
     def checkResponse(self, r):
         if not r.ok:
@@ -167,8 +185,7 @@ class DeadlineService(object):
     def submitJob(self, jobInfoDict, pluginInfoDict, auxiliaryFilenames=None, quiet=False, returnJobIdOnly=False):
         if self.webserviceConnectionEstablished:
             try:
-                r = self.requestSubmitJob(jobInfoDict, pluginInfoDict, auxiliaryFilenames, returnJobIdOnly=returnJobIdOnly)
-                job = r.json()
+                job = self.requestSubmitJob(jobInfoDict, pluginInfoDict, auxiliaryFilenames, returnJobIdOnly=returnJobIdOnly)
 
                 if not quiet:
                     jobId = job['_id']
@@ -274,7 +291,20 @@ class DeadlineService(object):
 
         return None
 
-    def save(self, settings, dbManager):
+    def saveToDB(self):
+        deadlineStandaloneInfo = {
+            'host': self.info.webserviceHost,
+            'port': self.info.webservicePort
+        }
+
+        self.dbManager.db[Keys.STATE_COLLECTION].replace_one({"_id": Keys.DEADLINE_SERVICE_ID}, deadlineStandaloneInfo, upsert=True)
+
+    def loadFromDB(self):
+        state = self.dbManager.db[Keys.STATE_COLLECTION].find_one({"_id": Keys.DEADLINE_SERVICE_ID})
+        if state != None:
+            self.info.initWebservice(state.get('host'), state.get('port'))
+
+    def save(self, settings, dbManager: MongoDBManager):
         """
         Serializes the state in settings and/or in the database.
 
@@ -284,13 +314,7 @@ class DeadlineService(object):
         """
         settings.setValue("deadline_service", self.info.__dict__)
 
-        deadlineStandaloneInfo = {
-            'host': self.info.webserviceHost,
-            'port': self.info.webservicePort
-        }
-        dbManager.db[Keys.STATE_COLLECTION].replace_one({"_id": Keys.DEADLINE_SERVICE_ID}, deadlineStandaloneInfo, upsert=True)
-
-    def load(self, settings, dbManager):
+    def load(self, settings, dbManager: MongoDBManager):
         """
         Loads the state from settings and/or the database.
 
@@ -298,6 +322,7 @@ class DeadlineService(object):
             - settings: Must support settings.value(str)
             - dbManager: MongoDBManager
         """
+        self.dbManager = dbManager
         infoDict = settings.value("deadline_service")
 
         if infoDict != None:
@@ -305,6 +330,4 @@ class DeadlineService(object):
             info.__dict__ = infoDict
             self.updateInfo(info)
 
-        state = dbManager.db[Keys.STATE_COLLECTION].find_one({"_id": Keys.DEADLINE_SERVICE_ID})
-        if state != None:
-            self.info.initWebservice(state.get('host'), state.get('port'))
+        self.loadFromDB()
