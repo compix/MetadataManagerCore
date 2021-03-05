@@ -302,6 +302,9 @@ class DeadlineService(object):
     def loadFromDB(self):
         state = self.dbManager.db[Keys.STATE_COLLECTION].find_one({"_id": Keys.DEADLINE_SERVICE_ID})
         if state != None:
+            if not self.info:
+                self.updateInfo(DeadlineServiceInfo())
+
             self.info.initWebservice(state.get('host'), state.get('port'))
 
     def save(self, settings, dbManager: MongoDBManager):
