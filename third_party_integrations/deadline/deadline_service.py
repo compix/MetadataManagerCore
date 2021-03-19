@@ -38,6 +38,10 @@ class DeadlineServiceInfo(object):
     def deadlineCustomPluginsPath(self):
         return os.path.join(self.deadlineRepositoryLocation, r"custom\plugins")
 
+    @property
+    def customJobInfoDirectory(self):
+        return os.path.join(self.deadlineRepositoryLocation, 'custom', 'job_info')
+
 def threadLocked(func):
     def wrapper(*args, **kwargs):
         args[0].lock.acquire()
@@ -288,6 +292,39 @@ class DeadlineService(object):
 
                 if jobNames != None:
                     return [jobName.strip() for jobName in jobNames]
+            elif not quiet:
+                self.printMsg(cmdOutput)
+
+        return None
+
+    def getPoolNames(self, quiet=False):
+        if not quiet:
+            self.printMsg(f"Retrieving jobs...")
+
+        if self.webserviceConnectionEstablished:
+            try:
+                r = self.requestGET('api/pools')
+                poolNames = r.json()
+
+                return poolNames
+            except Exception as e:
+                self.printMsg(str(e))
+
+                if not quiet:
+                    self.printCmdLineFallback()
+
+        cmd = '-pools'
+        cmdOutput = self.runDeadlineCmd(cmd, quiet=True)
+
+        if isinstance(cmdOutput, str):
+            errorMatch = re.search('Error:(.*)', cmdOutput)
+            
+            if not errorMatch:
+                poolNames = cmdOutput.replace('\r\n', '\n').split('\n')
+                return [poolName for poolName in poolNames if poolName.strip() != '']
+
+            elif not quiet:
+                self.printMsg(cmdOutput)
 
         return None
 
