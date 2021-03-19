@@ -20,9 +20,10 @@ class MaxPipelinePlugin (DeadlinePlugin):
         self.InitializeProcessCallback += self.InitializeProcess
         self.RenderExecutableCallback += self.RenderExecutable
         self.RenderArgumentCallback += self.RenderArgument
+        self.EndJobCallback += self.EndJob
 
     ## Clean up the plugin.
-    def Cleanup():
+    def Cleanup(self):
         # Clean up stdout handler callbacks.
         for stdoutHandler in self.StdoutHandlers:
             del stdoutHandler.HandleCallback
@@ -30,6 +31,7 @@ class MaxPipelinePlugin (DeadlinePlugin):
         del self.InitializeProcessCallback
         del self.RenderExecutableCallback
         del self.RenderArgumentCallback
+        del self.EndJobCallback
 
     ## Called by Deadline to initialize the plugin.
     def InitializeProcess( self ):
@@ -48,6 +50,15 @@ class MaxPipelinePlugin (DeadlinePlugin):
         self.AddStdoutHandlerCallback("ERROR:(.*)").HandleCallback += self.HandleStdoutError
 
         self.LogInfo("Successfully Executed Initialization Process.")
+    
+    def EndJob(self):
+        job = self.GetJob()
+        outputDir = job.GetJobExtraInfoKeyValue("OutputDirectory0")
+        outputFile = job.GetJobInfoKeyValue("OutputFilename0")
+        if outputFile and outputDir and not os.path.exists(os.path.join(outputDir, outputFile)):
+            self.FailRender( "Expected output file " + os.path.join(outputDir, outputFile) + " was not generated." )
+
+        super(MaxPipelinePlugin, self).EndJob()
 
     ## Callback for when a line of stdout contains a WARNING message.
     def HandleStdoutWarning( self ):
@@ -64,9 +75,6 @@ class MaxPipelinePlugin (DeadlinePlugin):
 
     ## Callback to get the arguments that will be passed to the executable.
     def RenderArgument( self ):
-        job = self.GetJob()
-        #maxScript = job.GetJobExtraInfoKeyValue("maxScript")
-
         auxiliaryFilenames = self.GetAuxiliaryFilenames()
 
         if len(auxiliaryFilenames) == 0:
