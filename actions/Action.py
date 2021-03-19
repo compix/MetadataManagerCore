@@ -10,6 +10,9 @@ class Action(object):
         self.progressUpdateEvent = Event()
         self.currentProgress = 0
         self.currentProgressMessage = None
+        self.useDefaultConfirmationFunction = True
+        self.confirmationFunction = None
+        self.retrieveArgsFunction = None
 
     def execute(self):
         pass

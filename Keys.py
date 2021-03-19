@@ -6,8 +6,10 @@ systemIDKey = "s_id"
 
 systemVersionKey = "s_version"
 
+preview = "preview"
+
 # s_id is not unique but s_id + s_version is which happens to be defined as _id = s_id + s_version
-systemKeys = ["_id", systemIDKey, systemVersionKey]
+systemKeys = ["_id", systemIDKey, systemVersionKey, preview]
 
 collectionsMD = "collectionsMD"
 

@@ -32,13 +32,16 @@ class Environment(object):
                 self.autoExportPath = autoExportPath
 
     def evaluateSettingsValue(self, value):
-        p = re.compile(r'\${(.*)}')
+        if not isinstance(value, str):
+            return value
+            
+        p = re.compile(r'\${(.*?)}')
         match = p.match(value)
         if match:
             key = match.group(1)
             evaluatedValue = self.settingsDict.get(key)
             if evaluatedValue == None:
-                raise f"Failed evaluating {value}. Unknown token found: {key}"
+                raise RuntimeError(f"Failed evaluating {value}. Unknown token found: {key}")
 
             evaluatedValue = value.replace(match.group(), evaluatedValue)
             return self.evaluateSettingsValue(evaluatedValue)

@@ -1,3 +1,4 @@
+from MetadataManagerCore import Keys
 from MetadataManagerCore.Event import Event
 from MetadataManagerCore.filtering.DocumentFilter import DocumentFilter
 from typing import List
@@ -82,7 +83,7 @@ class DocumentFilterManager(object):
 
     def hasPreviewFilter(self, document):
         try:
-            previewPath = document.get('preview')
+            previewPath = document.get(Keys.preview)
             animPattern = r'(.*)\.(#+)\.(.*)'
             animMatch = re.match(animPattern, previewPath)
             if animMatch:
