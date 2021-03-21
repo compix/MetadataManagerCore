@@ -26,11 +26,17 @@ class EnvironmentManager(object):
         self.changeMonitor = None
         self.onStateChanged = Event()
 
-    def addEnvironment(self, env: Environment, save=False):
+    def addEnvironment(self, env: Environment, save=False, replaceExisting=True):
         if save:
             self.checkForChanges()
 
-        self.environments.append(env)
+        existingEnv = self.getEnvironmentFromId(env.uniqueEnvironmentId)
+        if existingEnv:
+            if replaceExisting:
+                self.environments.remove(existingEnv)
+                self.environments.append(env)
+        else:
+            self.environments.append(env)
         
         if save:
             self.saveToDatabase()

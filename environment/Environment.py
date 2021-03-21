@@ -71,6 +71,9 @@ class Environment(object):
         settingsDict = self.getEvaluatedSettings()
         curTarget = settingsDict.get('target')
         if curTarget:
-            return EnvironmentTarget(curTarget)
+            try:
+                return EnvironmentTarget(curTarget)
+            except:
+                return EnvironmentTarget.Preview
         
         return None
