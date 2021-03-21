@@ -159,3 +159,6 @@ class MongoDBManager:
     @property
     def serviceCollection(self):
         return self.db[Keys.SERVICE_COLLECTION]
+
+    def dropCollection(self, collectionName: str):
+        self.db.drop_collection(collectionName)
