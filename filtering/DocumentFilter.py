@@ -1,8 +1,11 @@
+from typing import Callable
+
+
 class DocumentFilter(object):
     def __init__(self, filterFunction = None, uniqueFilterLabel : str = None, active : bool = False, hasStringArg : bool = False) -> None:
         super().__init__()
 
-        self.filterFunction = filterFunction
+        self.filterFunction: Callable[[dict, str], bool] = filterFunction
         self.uniqueFilterLabel = uniqueFilterLabel
         self.active = active
         self.args = None
