@@ -56,7 +56,7 @@ class DocumentOperation:
                         return newDict, DocOpResult.Successful
                     
                 # Move old version to versioning collection:
-                self.versionCollection.insert_one(currentDocument)
+                self.versionCollection.replace_one({"_id":currentDocument.get('_id')}, currentDocument, upsert=True)
                 self.collection.delete_one({'_id':(self.getId(self.version))})
 
                 # Apply modifications:
