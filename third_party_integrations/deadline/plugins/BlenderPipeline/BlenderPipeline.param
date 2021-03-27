@@ -1,0 +1,31 @@
+[About]
+Type=label
+Label=About
+Category=About Plugin
+CategoryOrder=-1
+Default=The Blender Pipeline Plugin is used for automated scene construction and rendering submission.
+Description=Not configurable
+
+[BlenderDefault]
+Type=multilinemultifilename
+Label=Blender Default Executable
+Default=C:\Program Files\Blender Foundation\Blender\blender.exe;C:\Program Files (x86)\Blender Foundation\Blender\blender.exe;/Applications/Blender/blender.app/Contents/MacOS/blender;/usr/local/Blender/blender
+Description=The path to the Blender executable of any version.
+
+[Blender2.8]
+Type=multilinemultifilename
+Label=Blender 2.8 Executable
+Default=C:\Program Files\Blender Foundation\Blender 2.8\blender.exe;C:\Program Files (x86)\Blender Foundation\Blender 2.8\blender.exe;/Applications/Blender 2.8/blender.app/Contents/MacOS/blender;/usr/local/Blender 2.8/blender
+Description=The path to the Blender exe.
+
+[Blender2.9]
+Type=multilinemultifilename
+Label=Blender 2.9 Executable
+Default=C:\Program Files\Blender Foundation\Blender 2.9\blender.exe;C:\Program Files (x86)\Blender Foundation\Blender 2.9\blender.exe;/Applications/Blender 2.9/blender.app/Contents/MacOS/blender;/usr/local/Blender 2.9/blender
+Description=The path to the Blender exe.
+
+[Blender3.0]
+Type=multilinemultifilename
+Label=Blender 3.0 Executable
+Default=C:\Program Files\Blender Foundation\Blender 3.0\blender.exe;C:\Program Files (x86)\Blender Foundation\Blender 3.0\blender.exe;/Applications/Blender 3.0/blender.app/Contents/MacOS/blender;/usr/local/Blender 3.0/blender
+Description=The path to the Blender exe.
