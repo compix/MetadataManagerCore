@@ -27,11 +27,12 @@ class Environment(object):
         if stateDict != None:
             self.settingsDict = stateDict.get('settings')
             self.setDisplayName(stateDict.get("display_name"))
-            autoExportPath = stateDict.get('auto_export_path')
-            if autoExportPath:
-                self.autoExportPath = autoExportPath
+            self.autoExportPath = stateDict.get('auto_export_path')
 
-    def evaluateSettingsValue(self, value):
+    def evaluateSettingsValue(self, value, depth=0):
+        if depth == 1000:
+            raise RuntimeError(f'Max recursion depth reached in settings value evaluation of {value}')
+
         if not isinstance(value, str):
             return value
             
@@ -44,7 +45,7 @@ class Environment(object):
                 raise RuntimeError(f"Failed evaluating {value}. Unknown token found: {key}")
 
             evaluatedValue = value.replace(match.group(), evaluatedValue)
-            return self.evaluateSettingsValue(evaluatedValue)
+            return self.evaluateSettingsValue(evaluatedValue, depth=depth + 1)
         else:
             return value
 
