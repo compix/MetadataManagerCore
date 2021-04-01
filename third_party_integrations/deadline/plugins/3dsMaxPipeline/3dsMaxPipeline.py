@@ -44,14 +44,19 @@ class MaxPipelinePlugin (DeadlinePlugin):
         # Set the ManagedProcess specific settings.
         self.UseProcessTree = True
         self.StdoutHandling = True
+        self._finished = False
 
         # Set the stdout handlers.
         self.AddStdoutHandlerCallback("WARNING:.*").HandleCallback += self.HandleStdoutWarning
         self.AddStdoutHandlerCallback("ERROR:(.*)").HandleCallback += self.HandleStdoutError
+        self.AddStdoutHandlerCallback("JOB FINISHED.*").HandleCallback += self.HandleStdoutFinish
 
         self.LogInfo("Successfully Executed Initialization Process.")
     
     def EndJob(self):
+        if not self._finished:
+            self.FailRender("Job did not run correctly.")
+
         job = self.GetJob()
         outputDir = job.GetJobExtraInfoKeyValue("OutputDirectory0")
         outputFile = job.GetJobInfoKeyValue("OutputFilename0")
@@ -67,6 +72,9 @@ class MaxPipelinePlugin (DeadlinePlugin):
     ## Callback for when a line of stdout contains an ERROR message.
     def HandleStdoutError( self ):
         self.FailRender( "Detected an error: " + self.GetRegexMatch(1) )
+
+    def HandleStdoutFinish(self):
+        self._finished = True
 
     ## Callback to get the executable used for rendering.
     def RenderExecutable( self ):
