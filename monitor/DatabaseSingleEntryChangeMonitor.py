@@ -14,7 +14,8 @@ class DatabaseSingleEntryChangeMonitor(ChangeMonitor):
     def checkForChanges(self):
         curState = self.getCurrentState()
         state = self.dbManager.db[self.collection].find_one({'_id': self.id})
-        del state['_id']
+        if state:
+            del state['_id']
 
         if curState != state:
             self.onStateChanged()
