@@ -6,6 +6,8 @@ systemIDKey = "s_id"
 
 systemVersionKey = "s_version"
 
+collection = 's_collection'
+
 preview = "preview"
 
 # s_id is not unique but s_id + s_version is which happens to be defined as _id = s_id + s_version
@@ -26,5 +28,6 @@ ACTION_MANAGER_ID = "action_manager"
 ENVIRONMENT_MANAGER_ID = "environment_manager"
 ARCHIVED_ENVIRONMENTS_ID = "archived_environments"
 DEADLINE_SERVICE_ID = "deadline_service"
+TAGS = 's_tags'
 
 hiddenCollections = set([collectionsMD, STATE_COLLECTION, HOST_PROCESSES_COLLECTION, SERVICE_COLLECTION, SERVICE_PROCESS_COLLECTION])

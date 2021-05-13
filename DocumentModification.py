@@ -19,6 +19,7 @@ class DocumentOperation:
     """
     def __init__(self, database, collectionName, sid, dataDict):
         self.sid = sid
+        self.collectionName = collectionName
         self.collection = database[collectionName]
         self.versionCollection = database[collectionName + Keys.OLD_VERSIONS_COLLECTION_SUFFIX]
         self.dataDict = dataDict
@@ -37,6 +38,8 @@ class DocumentOperation:
 
         If checkForModifications is true, the new document will be compared to the old document (if present). 
         If the documents are identical the DB entry for the given sid won't be changed.
+
+        Note: Document operations may only add new data or modify existing data but never remove data. This is an important property because modification dictionaries may be incomplete.
         """
         # Get the newest version and check if it matches the expected version
         currentDocument = self.getNewestDocument()
@@ -77,6 +80,7 @@ class DocumentOperation:
 
         # Note: A race-condition is possible. Two dicts with the same _id might be inserted which raises an error.
         try:
+            newDict[Keys.collection] = self.collectionName
             newDict['_id'] = self.getId(newVersion)
             self.collection.insert_one(newDict)
             return newDict, DocOpResult.Successful
