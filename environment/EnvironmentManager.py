@@ -26,7 +26,7 @@ class EnvironmentManager(object):
         self.changeMonitor = None
         self.onStateChanged = Event()
 
-    def addEnvironment(self, env: Environment, save=False, replaceExisting=True):
+    def addEnvironment(self, env: Environment, save=False, replaceExisting=False):
         if save:
             self.checkForChanges()
 
@@ -35,6 +35,9 @@ class EnvironmentManager(object):
             if replaceExisting:
                 self.environments.remove(existingEnv)
                 self.environments.append(env)
+            else:
+                for key, value in env.settingsDict.items():
+                    existingEnv.settingsDict[key] = value
         else:
             self.environments.append(env)
         
