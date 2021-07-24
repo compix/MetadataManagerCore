@@ -1,35 +1,32 @@
-from MetadataManagerCore.monitor.DatabaseSingleEntryChangeMonitor import DatabaseSingleEntryChangeMonitor
+from MetadataManagerCore.communication.messaging import FanoutPublisher, MessengerConsumerThread
 from MetadataManagerCore.environment.Environment import Environment
 from MetadataManagerCore.mongodb_manager import MongoDBManager
 from MetadataManagerCore import Keys
 from typing import List
 from MetadataManagerCore.Event import Event
+import logging
 
-class EnvironmentManagerChangeMonitor(DatabaseSingleEntryChangeMonitor):
-    def __init__(self, dbManager: MongoDBManager, collection: str, id: str, envManager) -> None:
-        super().__init__(dbManager, collection, id)
-
-        self.envManager = envManager
-
-    def getCurrentState(self) -> dict:
-        return self.envManager.getCurrentState()
-
-    def onStateChanged(self):
-        self.envManager.updateState()
-        self.envManager.onStateChanged()
+logger = logging.getLogger(__name__)
 
 class EnvironmentManager(object):
     def __init__(self):
         self.environments : List[Environment] = []
 
         self.dbManager = None
-        self.changeMonitor = None
         self.onStateChanged = Event()
 
-    def addEnvironment(self, env: Environment, save=False, replaceExisting=False):
-        if save:
-            self.checkForChanges()
+        self.changeConsumer = MessengerConsumerThread(Keys.RABBITMQ_ENVIRONMENT_EXCHANGE, self.onChangeEvent)
+        self._changePublisher : FanoutPublisher = None
+        self.createChangePublisher()
 
+    def createChangePublisher(self):
+        try:
+            self._changePublisher = FanoutPublisher(Keys.RABBITMQ_ENVIRONMENT_EXCHANGE)
+        except Exception as e:
+            self._changePublisher = None
+            logger.warning(f'Failed to create FanoutPublisher: {str(e)}')
+
+    def addEnvironment(self, env: Environment, save=False, replaceExisting=False):
         existingEnv = self.getEnvironmentFromId(env.uniqueEnvironmentId)
         if existingEnv:
             if replaceExisting:
@@ -79,6 +76,16 @@ class EnvironmentManager(object):
     def saveToDatabase(self):
         if self.dbManager:
             self.dbManager.db[Keys.STATE_COLLECTION].replace_one({"_id": Keys.ENVIRONMENT_MANAGER_ID}, self.getCurrentState(), upsert=True)
+            
+            if self._changePublisher and self._changePublisher.channel.is_open:
+                try:
+                    self._changePublisher.publish('State changed.')
+                except Exception as e:
+                    logger.warning(f'Publish change failed: {str(e)}')
+
+    def onChangeEvent(self, message: str):
+        self.updateState()
+        self.onStateChanged()
 
     def load(self, settings, dbManager):
         """
@@ -90,10 +97,6 @@ class EnvironmentManager(object):
         """
         self.dbManager = dbManager
         self.loadFromDatabase()
-
-        self.changeMonitor = EnvironmentManagerChangeMonitor(self.dbManager, Keys.STATE_COLLECTION, Keys.ENVIRONMENT_MANAGER_ID, self)
-        self.changeMonitor.checkIntervalInSeconds = 5.0
-        self.changeMonitor.runAsync()
 
     def loadFromDatabase(self):
         if self.dbManager:
@@ -135,10 +138,10 @@ class EnvironmentManager(object):
     def updateState(self):
         self.loadFromDatabase()
 
-    def checkForChanges(self):
-        if self.changeMonitor:
-            self.changeMonitor.checkForChanges()
-
     def shutdown(self):
-        if self.changeMonitor:
-            self.changeMonitor.stopAndJoin()
+        self.changeConsumer.stop()
+        try:
+            if self._changePublisher and not self._changePublisher.connection.is_closed:
+                self._changePublisher.connection.close()
+        except:
+            pass

@@ -11,11 +11,14 @@ class Environment(object):
     """
     An environment encapsulates user defined settings, data and processes.
     """
-    def __init__(self, uniqueEnvironmentId):
-        self.uniqueEnvironmentId = uniqueEnvironmentId
+    def __init__(self, uniqueEnvironmentId=None):
         self.settingsDict = dict()
-        self.displayName = uniqueEnvironmentId
         self.autoExportPath = ''
+        self.setUID(uniqueEnvironmentId)
+
+    def setUID(self, uniqueEnvironmentId):
+        self.uniqueEnvironmentId = uniqueEnvironmentId
+        self.displayName = uniqueEnvironmentId
 
     def setDisplayName(self, displayName):
         self.displayName = displayName
