@@ -1,8 +1,9 @@
+from MetadataManagerCore.environment.EnvironmentManager import EnvironmentManager
+from MetadataManagerCore.environment.Environment import Environment
 from MetadataManagerCore import Keys
 from MetadataManagerCore.Event import Event
 from MetadataManagerCore.filtering.DocumentFilter import DocumentFilter
 from typing import List
-from MetadataManagerCore.filtering.DocumentFilter import DocumentFilter
 from MetadataManagerCore.mongodb_manager import MongoDBManager
 import os
 import re
@@ -19,42 +20,57 @@ class DocumentFilterManager(object):
 
         self.addFilter(DocumentFilter(self.hasPreviewFilter, 'Has Preview'))
 
-    def getFilterFromLabel(self, uniqueFilterLabel : str):
-        for customFilter in self.customFilters:
+        self.collectionToFiltersDict = dict()
+
+    def getFilterFromLabel(self, uniqueFilterLabel : str, collectionNames: List[str] = None):
+        customFilters = self.getFilters(collectionNames)
+
+        for customFilter in customFilters:
             if customFilter.uniqueFilterLabel == uniqueFilterLabel:
                 return customFilter
         
         return None
 
-    def deleteFilterByLabel(self, uniqueFilterLabel : str):
-        customFilter = self.getFilterFromLabel(uniqueFilterLabel)
-        if customFilter:
-            self.customFilters.remove(customFilter)
+    def getFilters(self, collectionNames: List[str] = None) -> List[DocumentFilter]:
+        if collectionNames == None:
+            collectionNames = []
 
-        self.onFilterListUpdateEvent()
+        filters = [f for f in self.customFilters]
+        for collectionName in collectionNames:
+            filters += self.collectionToFiltersDict.get(collectionName, [])
+        
+        return filters
 
     def clearFilters(self):
         self.customFilters.clear()
+        self.collectionToFiltersDict.clear()
 
         self.onFilterListUpdateEvent()
 
-    def addFilter(self, documentFilter : DocumentFilter):
-        # Do not add duplicates:
-        customFilter = self.getFilterFromLabel(documentFilter.uniqueFilterLabel)
-        if customFilter:
-            self.customFilters.remove(customFilter)
+    def addFilter(self, documentFilter : DocumentFilter, collectionName: str = None):
+        if collectionName:
+            documentFilter.collectionName = collectionName
+            self.collectionToFiltersDict.setdefault(collectionName, []).append(documentFilter)
+        else:
+            # Do not add duplicates:
+            customFilter = self.getFilterFromLabel(documentFilter.uniqueFilterLabel)
+            if customFilter:
+                self.customFilters.remove(customFilter)
 
-        self.customFilters.append(documentFilter)
+            self.customFilters.append(documentFilter)
 
         self.onFilterListUpdateEvent()
 
-    def insertFilter(self, documentFilter: DocumentFilter, idx: int):
-        # Do not add duplicates:
-        customFilter = self.getFilterFromLabel(documentFilter.uniqueFilterLabel)
-        if customFilter:
-            self.customFilters.remove(customFilter)
+    def insertFilter(self, documentFilter: DocumentFilter, idx: int, collectionName: str = None):
+        if collectionName:
+            self.collectionToFiltersDict.setdefault(collectionName, []).insert(idx, documentFilter)
+        else:
+            # Do not add duplicates:
+            customFilter = self.getFilterFromLabel(documentFilter.uniqueFilterLabel)
+            if customFilter:
+                self.customFilters.remove(customFilter)
 
-        self.customFilters.insert(idx, documentFilter)
+            self.customFilters.insert(idx, documentFilter)
 
         self.onFilterListUpdateEvent()
 
@@ -71,6 +87,8 @@ class DocumentFilterManager(object):
     def yieldFilteredDocuments(self, collectionName : str, mongodbFilter : dict = {}, distinctionText : str = '', filters : List[DocumentFilter] = None):
         if filters == None:
             filters = []
+
+        filters = filters + self.collectionToFiltersDict.get(collectionName, [])
 
         for filter in filters:
             filter.preApply()

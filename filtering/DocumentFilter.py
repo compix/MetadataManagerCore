@@ -11,6 +11,7 @@ class DocumentFilter(object):
         self.args = None
         self.hasStringArg = hasStringArg
         self.negate = False
+        self.collectionName = None
 
     def setActive(self, active):
         self.active = active

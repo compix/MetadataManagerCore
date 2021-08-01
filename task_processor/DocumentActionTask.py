@@ -34,7 +34,7 @@ class DocumentActionTask(Task):
         customPythonFilters = []
         for filterDict in customPythonFilterDicts:
             uniqueLabel = filterDict['uniqueFilterLabel']
-            documentFilter = self.documentFilterManager.getFilterFromLabel(uniqueLabel)
+            documentFilter = self.documentFilterManager.getFilterFromLabel(uniqueLabel, collectionNames)
             documentFilter.setFromDict(filterDict)
             customPythonFilters.append(documentFilter)
 

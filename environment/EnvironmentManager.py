@@ -52,7 +52,7 @@ class EnvironmentManager(object):
         return [env.displayName for env in self.environments]
 
     def getEnvironmentFromName(self, environmentName):
-        envId = self.getIdFromEnvironmentName(environmentName)
+        envId = EnvironmentManager.getIdFromEnvironmentName(environmentName)
         return self.getEnvironmentFromId(envId)
 
     def hasEnvironmentId(self, environmentId):
@@ -116,7 +116,8 @@ class EnvironmentManager(object):
     def isValidEnvironmentId(self, id):
         return id != None and id != ""
 
-    def getIdFromEnvironmentName(self, environmentName):
+    @staticmethod
+    def getIdFromEnvironmentName(environmentName: str):
         return environmentName.replace(" ","").replace("\n","").replace("\t","").replace("\r","") if isinstance(environmentName, str) else None
 
     def archive(self, dbManager : MongoDBManager, environment : Environment):
