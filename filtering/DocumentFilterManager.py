@@ -50,7 +50,12 @@ class DocumentFilterManager(object):
     def addFilter(self, documentFilter : DocumentFilter, collectionName: str = None):
         if collectionName:
             documentFilter.collectionName = collectionName
-            self.collectionToFiltersDict.setdefault(collectionName, []).append(documentFilter)
+            customFilters = self.collectionToFiltersDict.setdefault(collectionName, [])
+            existingFilter = next((cf for cf in customFilters if cf.uniqueFilterLabel == documentFilter.uniqueFilterLabel), None)
+            if existingFilter:
+                customFilters.remove(existingFilter)
+
+            customFilters.append(documentFilter)
         else:
             # Do not add duplicates:
             customFilter = self.getFilterFromLabel(documentFilter.uniqueFilterLabel)
