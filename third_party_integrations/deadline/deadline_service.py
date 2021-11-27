@@ -331,7 +331,8 @@ class DeadlineService(object):
     def saveToDB(self):
         deadlineStandaloneInfo = {
             'host': self.info.webserviceHost,
-            'port': self.info.webservicePort
+            'port': self.info.webservicePort,
+            'deadlineRepositoryLocation': self.info.deadlineRepositoryLocation
         }
 
         self.dbManager.db[Keys.STATE_COLLECTION].replace_one({"_id": Keys.DEADLINE_SERVICE_ID}, deadlineStandaloneInfo, upsert=True)
@@ -341,6 +342,10 @@ class DeadlineService(object):
         if state != None:
             if not self.info:
                 self.updateInfo(DeadlineServiceInfo())
+
+            deadlineRepositoryLocation = state.get('deadlineRepositoryLocation')
+            if deadlineRepositoryLocation:
+                self.info.deadlineRepositoryLocation = deadlineRepositoryLocation
 
             self.info.initWebservice(state.get('host'), state.get('port'))
 
