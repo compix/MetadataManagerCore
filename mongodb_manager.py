@@ -1,3 +1,4 @@
+import typing
 import pymongo
 from MetadataManagerCore import Keys
 from bson import Code
@@ -48,8 +49,15 @@ class MongoDBManager:
             if not cn in Keys.hiddenCollections and not cn.endswith(Keys.OLD_VERSIONS_COLLECTION_SUFFIX):
                 yield cn
 
-    def findOne(self, uid):
+    def findOne(self, uid: str):
         for collectionName in self.getVisibleCollectionNames():
+            collection = self.db[collectionName]
+            val = collection.find_one({"_id":uid})
+            if val != None:
+                return val
+
+    def findOneInCollections(self, uid: str, collectionNames: typing.List[str]):
+        for collectionName in collectionNames:
             collection = self.db[collectionName]
             val = collection.find_one({"_id":uid})
             if val != None:
