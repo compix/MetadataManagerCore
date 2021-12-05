@@ -1,0 +1,35 @@
+[About]
+Type=label
+Label=About
+Category=About Plugin
+CategoryOrder=-1
+Index=0
+Default=Unreal Engine Pipeline Plugin for Deadline
+Description=Not configurable
+
+[ConcurrentTasks]
+Type=label
+Label=ConcurrentTasks
+Category=About Plugin
+CategoryOrder=-1
+Index=0
+Default=True
+Description=Not configurable
+
+[UE_4_EditorExecutable]
+Type=multilinemultifilename
+Category=Editor Executables
+CategoryOrder=0
+CategoryIndex=0
+Label=Unreal Engine 4 Editor Executable
+Default=C:\Program Files\Epic Games\UE_4.27\Engine\Binaries\Win64\UE4Editor-Cmd.exe
+Description=The path to the Unreal Engine Editor 4 executable file used for rendering. Enter alternative paths on separate lines.
+
+[UE_5_EditorExecutable]
+Type=multilinemultifilename
+Category=Editor Executables
+CategoryOrder=0
+CategoryIndex=0
+Label=Unreal Engine Editor 5 Executable
+Default=C:\Program Files\Epic Games\UE_5.0\Engine\Binaries\Win64\UnrealEditor-Cmd.exe
+Description=The path to the Unreal Engine Editor 5 executable file used for rendering. Enter alternative paths on separate lines.
