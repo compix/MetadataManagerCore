@@ -1,5 +1,6 @@
 from MetadataManagerCore.filtering.DocumentFilter import DocumentFilter
 from MetadataManagerCore.filtering.DocumentFilterManager import DocumentFilterManager
+from MetadataManagerCore.task_processor.DataRetrievalType import DataRetrievalType
 from MetadataManagerCore.task_processor.Task import Task
 from MetadataManagerCore.actions.ActionManager import ActionManager
 from MetadataManagerCore.filtering.DocumentFilterManager import DocumentFilterManager
@@ -23,25 +24,33 @@ class DocumentActionTask(Task):
 
     def execute(self, dataDict: dict):
         actionId = self.getEntryVerified(dataDict, 'actionId')
-        collectionNames = self.getEntryVerified(dataDict, 'collections')
-        documentFilterString = self.getEntryVerified(dataDict, 'documentFilter')
-        distinctionFilterString = self.getEntryVerified(dataDict, 'distinctionFilter')
 
-        customPythonFilterDicts = dataDict.get('customDocumentFilters', [])
-        if customPythonFilterDicts != None:
-            customPythonFilterDicts = []
+        try:
+            dataRetrievalType = DataRetrievalType(dataDict.get('dataRetrievalType', DataRetrievalType.UseDocumentFilter))
+        except:
+            raise RuntimeError(f'Unknown data retrieval type: {dataDict.get("dataRetrievalType")}')
 
-        customPythonFilters = []
-        for filterDict in customPythonFilterDicts:
-            uniqueLabel = filterDict['uniqueFilterLabel']
-            documentFilter = self.documentFilterManager.getFilterFromLabel(uniqueLabel, collectionNames)
-            documentFilter.setFromDict(filterDict)
-            customPythonFilters.append(documentFilter)
-
-        if actionId and collectionNames and documentFilterString:
-            action = self.actionManager.getActionById(actionId)
+        action = self.actionManager.getActionById(actionId)
+        if action is None:
+            raise RuntimeError(f'Unknown actionId: {actionId}')
             
-            if action:
+        if dataRetrievalType == DataRetrievalType.UseDocumentFilter:
+            collectionNames = self.getEntryVerified(dataDict, 'collections')
+            documentFilterString = self.getEntryVerified(dataDict, 'documentFilter')
+            distinctionFilterString = self.getEntryVerified(dataDict, 'distinctionFilter')
+
+            customPythonFilterDicts = dataDict.get('customDocumentFilters', [])
+            if customPythonFilterDicts != None:
+                customPythonFilterDicts = []
+
+            customPythonFilters = []
+            for filterDict in customPythonFilterDicts:
+                uniqueLabel = filterDict['uniqueFilterLabel']
+                documentFilter = self.documentFilterManager.getFilterFromLabel(uniqueLabel, collectionNames)
+                documentFilter.setFromDict(filterDict)
+                customPythonFilters.append(documentFilter)
+
+            if collectionNames and documentFilterString:
                 if len(collectionNames) == 0:
                     raise RuntimeError("No collections were specified.")
 
@@ -55,5 +64,7 @@ class DocumentActionTask(Task):
                 
                 if numDocumentsProcessed == 0:
                     raise RuntimeError("No documents were processed.")
-            else:
-                raise RuntimeError(f'Unknown actionId: {actionId}')
+
+        elif dataRetrievalType == DataRetrievalType.UseSubmittedData:
+            submittedData = dataDict.get('submittedData')
+            action.execute(submittedData)

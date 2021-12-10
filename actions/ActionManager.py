@@ -1,3 +1,4 @@
+import typing
 from MetadataManagerCore.actions.DocumentAction import DocumentAction
 from MetadataManagerCore.actions.Action import Action
 from MetadataManagerCore.actions.ActionType import ActionType
@@ -9,7 +10,7 @@ import logging
 class ActionManager(object):
     def __init__(self):
         self.logger = logging.getLogger(__name__)
-        self.actions = []
+        self.actions: typing.List[Action] = []
         self.collectionToActionsMap = dict()
 
         self.m_linkActionToCollectionEvent = Event()
@@ -50,7 +51,7 @@ class ActionManager(object):
     def getActionIdsOfCategory(self, category):
         return [a.id for a in self.actions if a.category == category]
     
-    def registerAction(self, action):
+    def registerAction(self, action: Action):
         self.logger.debug(f"Registering action: {action.id}")
 
         for a in self.actions:
