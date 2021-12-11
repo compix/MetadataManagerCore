@@ -1,6 +1,13 @@
 # Thanks to Longpoke(https://stackoverflow.com/users/80243/l%cc%b2%cc%b3o%cc%b2%cc%b3%cc%b3n%cc%b2%cc%b3%cc%b3g%cc%b2%cc%b3%cc%b3p%cc%b2%cc%b3o%cc%b2%cc%b3%cc%b3k%cc%b2%cc%b3%cc%b3e%cc%b2%cc%b3%cc%b3)
 # https://stackoverflow.com/questions/1092531/event-system-in-python
 
+class Subscriber(object):
+    def __init__(self, func, callOnce=False) -> None:
+        super().__init__()
+
+        self.func = func
+        self.callOnce = callOnce
+
 class Event(list):
     """Event subscription.
 
@@ -29,14 +36,29 @@ class Event(list):
 
     """
     def __call__(self, *args, **kwargs):
-        for f in self:
-            f(*args, **kwargs)
+        needsRemoval = []
+        for subscriber in self:
+            subscriber.func(*args, **kwargs)
+            if subscriber.callOnce:
+                needsRemoval.append(subscriber)
+
+        for s in needsRemoval:
+            self.remove(s)
 
     def __repr__(self):
         return f"Event({list.__repr__(self)})"
 
-    def subscribe(self, func):
-        self.append(func)
+    def append(self, func) -> None:
+        self.subscribe(func)
+
+    def subscribe(self, func, callOnce=False):
+        super().append(Subscriber(func, callOnce))
 
     def unsubscribe(self, func):
-        self.remove(func)
+        for subscriber in self:
+            if subscriber.func == func:
+                self.remove(subscriber)
+                break
+
+    def once(self, func):
+        self.subscribe(func, True)
