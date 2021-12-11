@@ -13,6 +13,7 @@ import logging
 import requests
 import json
 from MetadataManagerCore.mongodb_manager import MongoDBManager
+from MetadataManagerCore.Event import Event
 
 class DeadlineServiceInfo(object):
     def __init__(self):
@@ -63,6 +64,8 @@ class DeadlineService(object):
 
         logging.getLogger("requests").setLevel(logging.WARNING)
         logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+        self.onConnected = Event()
 
     def printMsg(self, msg):
         self.logger.info(msg)
@@ -147,6 +150,7 @@ class DeadlineService(object):
                 self.printMsg(f"Established connection with deadline webservice on host {self.info.webserviceHost} via port {self.info.webservicePort}.")
                 self.printMsg(r.text)
                 self.webserviceConnectionEstablished = True
+                self.onConnected()
             except Exception as e:
                 self.printMsg(str(e))
                 self.printCmdLineFallback()
