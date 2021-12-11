@@ -96,8 +96,23 @@ class MongoDBManager:
         return infos
 
     def setCollectionHeaderInfo(self, collectionName, tableHeader : List[CollectionHeaderKeyInfo]):
-        tableHeader = [i.asDict() for i in tableHeader]
+        if tableHeader:
+            tableHeader = [i.asDict() for i in tableHeader]
+
         self.collectionsMD.update_one({"_id": collectionName}, {'$set': {'tableHeader': tableHeader}}, upsert=True)
+
+    def addMissingHeaderInfos(self, collectionName: str, headerKeys: typing.List[str]):
+        currentHeader = self.extractCollectionHeaderInfo([collectionName])
+        currentHeaderKeys = set(i.key for i in currentHeader)
+        newKeys = []
+        for key in headerKeys:
+            if not key in currentHeaderKeys:
+                newKeys.append(key)
+
+        for key in newKeys:
+            currentHeader.append(CollectionHeaderKeyInfo(key, key, True))
+
+        self.setCollectionHeaderInfo(collectionName, currentHeader)
 
     def findAllKeysInCollection(self, collectionName):
         map = Code("function() { for (var key in this) { emit(key, null); } }")
