@@ -4,6 +4,7 @@ from MetadataManagerCore.task_processor.TaskPicker import TaskPicker
 import socket
 import logging
 import json
+import traceback
 
 class TaskProcessor(JsonSocket):
     def __init__(self, socketTimeout=None):
@@ -32,6 +33,7 @@ class TaskProcessor(JsonSocket):
                 self.processTask(taskDataDictionary)
         except Exception as e:
             self.logger.error(f"Failed to process the task from {jsonFilePath}. Reason: {str(e)}")
+            self.logger.error(traceback.format_exc())
 
     def processTask(self, taskDataDictionary: dict):
         taskType = taskDataDictionary.get('taskType')
