@@ -8,7 +8,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-logging.getLogger("pika").setLevel(logging.WARNING)
+logging.getLogger("pika").setLevel(logging.CRITICAL)
 
 class Messenger(object):
     def __init__(self, host: str, username: str, password: str) -> None:
