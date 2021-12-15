@@ -9,15 +9,17 @@ import logging
 logger = logging.getLogger(__name__)
 
 class EnvironmentManager(object):
-    def __init__(self):
+    def __init__(self, handleSharedChangeEvents=True):
         self.environments : List[Environment] = []
 
         self.dbManager = None
         self.onStateChanged = Event()
+        self.changeConsumer = None
 
-        self.changeConsumer = MessengerConsumerThread(Keys.RABBITMQ_ENVIRONMENT_EXCHANGE, self.onChangeEvent)
-        self._changePublisher : FanoutPublisher = None
-        self.createChangePublisher()
+        if handleSharedChangeEvents:
+            self.changeConsumer = MessengerConsumerThread(Keys.RABBITMQ_ENVIRONMENT_EXCHANGE, self.onChangeEvent)
+            self._changePublisher : FanoutPublisher = None
+            self.createChangePublisher()
 
     def createChangePublisher(self):
         try:
@@ -140,9 +142,10 @@ class EnvironmentManager(object):
         self.loadFromDatabase()
 
     def shutdown(self):
-        self.changeConsumer.stop()
-        try:
-            if self._changePublisher and not self._changePublisher.connection.is_closed:
-                self._changePublisher.connection.close()
-        except:
-            pass
+        if self.changeConsumer:
+            self.changeConsumer.stop()
+            try:
+                if self._changePublisher and not self._changePublisher.connection.is_closed:
+                    self._changePublisher.connection.close()
+            except:
+                pass
