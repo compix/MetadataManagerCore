@@ -29,3 +29,15 @@ Type=filename
 Label=3ds Max 2020 Executable
 Default=C:\Program Files\Autodesk\3ds Max 2020\3dsmax.exe
 Description=The path to the 3ds max exe.
+
+[3dsMaxExe2021]
+Type=filename
+Label=3ds Max 2021 Executable
+Default=C:\Program Files\Autodesk\3ds Max 2021\3dsmax.exe
+Description=The path to the 3ds max exe.
+
+[3dsMaxExe2022]
+Type=filename
+Label=3ds Max 2022 Executable
+Default=C:\Program Files\Autodesk\3ds Max 2022\3dsmax.exe
+Description=The path to the 3ds max exe.
