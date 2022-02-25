@@ -2,10 +2,13 @@ from MetadataManagerCore import Keys
 import json
 import re
 from enum import Enum
+import logging
 
 class EnvironmentTarget(Enum):
     Production = 'production'
     Preview = 'preview'
+
+logger = logging.getLogger(__name__)
 
 class Environment(object):
     """
@@ -45,7 +48,8 @@ class Environment(object):
             key = match.group(1)
             evaluatedValue = self.settingsDict.get(key)
             if evaluatedValue == None:
-                raise RuntimeError(f"Failed evaluating {value}. Unknown token found: {key}")
+                logger.error(f"Failed evaluating {value}. Unknown token found: {key}")
+                return None
 
             evaluatedValue = value.replace(match.group(), evaluatedValue)
             return self.evaluateSettingsValue(evaluatedValue, depth=depth + 1)
