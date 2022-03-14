@@ -106,6 +106,9 @@ class ActionManager(object):
         self.actions = [a for a in self.actions if a.id != actionId]
 
     def applyFilter(self, actions, filterString):
+        if not filterString:
+            return actions
+
         filteredActions = []
 
         for a in actions:
@@ -155,8 +158,12 @@ class ActionManager(object):
     def isActionRegisteredForCollection(self, actionId, collectionName):
         return actionId in self.getCollectionActionIds(collectionName)
 
-    def getCollectionActionsFiltered(self, collectionName, filterString):
-        actions = self.getCollectionActionIds(collectionName)
+    def getCollectionActionsFiltered(self, collectionName, filterString=None):
+        actionIds = self.getCollectionActionIds(collectionName)
+        actionIdToActionMap = {
+            action.id: action for action in self.actions
+        }
+        actions = [actionIdToActionMap[id] for id in actionIds]
         return self.applyFilter(actions, filterString)
 
     def isValidActionId(self, actionId):
