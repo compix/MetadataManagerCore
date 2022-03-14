@@ -14,6 +14,7 @@ class Action(object):
         self.confirmationEvent: Event = None
         self.requestConfirmationFunction = None
         self.retrieveArgsFunction = None
+        self.iconUri: str = None
 
     def execute(self):
         pass
