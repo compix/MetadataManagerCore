@@ -163,7 +163,7 @@ class ActionManager(object):
         actionIdToActionMap = {
             action.id: action for action in self.actions
         }
-        actions = [actionIdToActionMap[id] for id in actionIds]
+        actions = [actionIdToActionMap[id] for id in actionIds if id in actionIdToActionMap]
         return self.applyFilter(actions, filterString)
 
     def isValidActionId(self, actionId):
