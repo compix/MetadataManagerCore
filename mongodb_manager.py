@@ -63,6 +63,13 @@ class MongoDBManager:
             if val != None:
                 return val
 
+    def findOneBySidInCollections(self, sid: str, collectionNames: typing.List[str]):
+        for collectionName in collectionNames:
+            collection = self.db[collectionName]
+            val = collection.find_one({Keys.systemIDKey:sid})
+            if val != None:
+                return val
+
     @property
     def collectionsMD(self):
         return self.db[Keys.collectionsMD]
