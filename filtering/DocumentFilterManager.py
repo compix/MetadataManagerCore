@@ -1,5 +1,3 @@
-from MetadataManagerCore.environment.EnvironmentManager import EnvironmentManager
-from MetadataManagerCore.environment.Environment import Environment
 from MetadataManagerCore import Keys
 from MetadataManagerCore.Event import Event
 from MetadataManagerCore.filtering.DocumentFilter import DocumentFilter

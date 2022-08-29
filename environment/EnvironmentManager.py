@@ -1,3 +1,4 @@
+import typing
 from MetadataManagerCore.communication.messaging import FanoutPublisher, MessengerConsumerThread
 from MetadataManagerCore.environment.Environment import Environment
 from MetadataManagerCore.mongodb_manager import MongoDBManager
@@ -9,56 +10,43 @@ import logging
 logger = logging.getLogger(__name__)
 
 class EnvironmentManager(object):
-    def __init__(self, handleSharedChangeEvents=True):
-        self.environments : List[Environment] = []
-
+    def __init__(self):
         self.dbManager = None
         self.onStateChanged = Event()
         self.changeConsumer = None
 
-        if handleSharedChangeEvents:
-            self.changeConsumer = MessengerConsumerThread(Keys.RABBITMQ_ENVIRONMENT_EXCHANGE, self.onChangeEvent)
-            self._changePublisher : FanoutPublisher = None
-            self.createChangePublisher()
+    def getEnvironmentFromId(self, envId: str):
+        if not self.dbManager:
+            return None
 
-    def createChangePublisher(self):
-        try:
-            self._changePublisher = FanoutPublisher(Keys.RABBITMQ_ENVIRONMENT_EXCHANGE)
-        except Exception as e:
-            self._changePublisher = None
-            logger.warning(f'Failed to create FanoutPublisher: {str(e)}')
-
-    def addEnvironment(self, env: Environment, save=False, replaceExisting=False):
-        existingEnv = self.getEnvironmentFromId(env.uniqueEnvironmentId)
-        if existingEnv:
-            if replaceExisting:
-                self.environments.remove(existingEnv)
-                self.environments.append(env)
-            else:
-                for key, value in env.settingsDict.items():
-                    existingEnv.settingsDict[key] = value
-        else:
-            self.environments.append(env)
-        
-        if save:
-            self.saveToDatabase()
-
-    def getEnvironmentFromId(self, environmentId):
-        for env in self.environments:
-            if env.uniqueEnvironmentId == environmentId:
-                return env
+        envDict = self.dbManager.db[Keys.ENVIRONMENT_COLLECTION].find_one({"_id": envId})
+        if envDict:
+            env = Environment(envId)
+            env.load(envDict)
+            return env
 
         return None
 
     def getEnvironmentNames(self):
-        return [env.displayName for env in self.environments]
+        if not self.dbManager:
+            return []
 
-    def getEnvironmentFromName(self, environmentName):
+        names = []
+        with self.dbManager.db[Keys.ENVIRONMENT_COLLECTION].find({}, {"display_name":1}, no_cursor_timeout=True) as cursor:
+            for doc in cursor:
+                names.append(doc.get('display_name'))
+
+        return names
+
+    def getEnvironmentFromName(self, environmentName: str):
         envId = EnvironmentManager.getIdFromEnvironmentName(environmentName)
         return self.getEnvironmentFromId(envId)
 
-    def hasEnvironmentId(self, environmentId):
-        return self.getEnvironmentFromId(environmentId) != None
+    def hasEnvironmentId(self, envId: str):
+        if not self.dbManager:
+            return False
+
+        return self.dbManager.db[Keys.ENVIRONMENT_COLLECTION].count_documents({"_id": envId}) > 0
 
     def save(self, settings, dbManager):
         """
@@ -70,24 +58,50 @@ class EnvironmentManager(object):
         """
         pass
 
-    def getCurrentState(self) -> dict:
-        return {
-            "environments": {env.uniqueEnvironmentId:env.getStateDict() for env in self.environments}
-        }
+    def delete(self, envId: str):
+        self.dbManager.db[Keys.ENVIRONMENT_COLLECTION].delete_one({"_id": envId})
 
-    def saveToDatabase(self):
-        if self.dbManager:
-            self.dbManager.db[Keys.STATE_COLLECTION].replace_one({"_id": Keys.ENVIRONMENT_MANAGER_ID}, self.getCurrentState(), upsert=True)
-            
-            if self._changePublisher and self._changePublisher.channel.is_open:
-                try:
-                    self._changePublisher.publish('State changed.')
-                except Exception as e:
-                    logger.warning(f'Publish change failed: {str(e)}')
+    def _migrate_archived(self):
+        if not self.dbManager:
+            return
 
-    def onChangeEvent(self, message: str):
-        self.updateState()
-        self.onStateChanged()
+        prevState = self.dbManager.db[Keys.STATE_COLLECTION].find_one({"_id": Keys.ARCHIVED_ENVIRONMENTS_ID})
+        if prevState == None:
+            return
+
+        environmentsDict = prevState.get("environments")
+
+        if environmentsDict != None:
+            for envId, envState in environmentsDict.items():
+                self.dbManager.db[Keys.ARCHIVED_ENV_COLLECTION].replace_one({"_id": envId}, envState, upsert=True)
+
+        self.dbManager.db[Keys.STATE_COLLECTION].delete_one({"_id": Keys.ARCHIVED_ENVIRONMENTS_ID})
+
+    def _migrate(self):
+        if not self.dbManager:
+            return
+
+        prevState = self.dbManager.db[Keys.STATE_COLLECTION].find_one({"_id": Keys.ENVIRONMENT_MANAGER_ID})
+        if prevState == None:
+            return
+
+        environmentsDict = prevState.get("environments")
+
+        if environmentsDict != None:
+            for envId, envState in environmentsDict.items():
+                self.dbManager.db[Keys.ENVIRONMENT_COLLECTION].replace_one({"_id": envId}, envState, upsert=True)
+
+        self.dbManager.db[Keys.STATE_COLLECTION].delete_one({"_id": Keys.ENVIRONMENT_MANAGER_ID})
+
+    def migrate(self):
+        self._migrate()
+        self._migrate_archived()
+
+    def upsert(self, env: Environment):
+        if not self.dbManager:
+            return
+
+        self.dbManager.db[Keys.ENVIRONMENT_COLLECTION].replace_one({"_id": env.uniqueEnvironmentId}, env.getStateDict(), upsert=True)
 
     def load(self, settings, dbManager):
         """
@@ -98,22 +112,6 @@ class EnvironmentManager(object):
             - dbManager: MongoDBManager
         """
         self.dbManager = dbManager
-        self.loadFromDatabase()
-
-    def loadFromDatabase(self):
-        if self.dbManager:
-            state = self.dbManager.db[Keys.STATE_COLLECTION].find_one({"_id": Keys.ENVIRONMENT_MANAGER_ID})
-            if state != None:
-                environmentsDict = state.get("environments")
-
-                if environmentsDict != None:
-                    for envId, envState in environmentsDict.items():
-                        env = next((env for env in self.environments if env.uniqueEnvironmentId == envId), None)
-                        if not env:
-                            env = Environment(envId)
-                            self.addEnvironment(env)
-
-                        env.load(envState)
 
     def isValidEnvironmentId(self, id):
         return id != None and id != ""
@@ -122,30 +120,26 @@ class EnvironmentManager(object):
     def getIdFromEnvironmentName(environmentName: str):
         return environmentName.replace(" ","").replace("\n","").replace("\t","").replace("\r","") if isinstance(environmentName, str) else None
 
-    def archive(self, dbManager : MongoDBManager, environment : Environment):
-        self.environments = [env for env in self.environments if env.uniqueEnvironmentId != environment.uniqueEnvironmentId]
-        self.saveToDatabase()
+    def getEnvironments(self) -> typing.List[Environment]:
+        return [env for env in self.yieldEnvironments()]
 
-        envState = environment.getStateDict()
-        state = dbManager.db[Keys.STATE_COLLECTION].find_one({"_id": Keys.ARCHIVED_ENVIRONMENTS_ID})
-        archivedEnvs = None
-        if state != None:
-            archivedEnvs = state.get("environments")
+    def yieldEnvironments(self) -> typing.Iterator[Environment]:
+        if self.dbManager:
+            with self.dbManager.db[Keys.ENVIRONMENT_COLLECTION].find({}) as cursor:
+                for envDict in cursor:
+                    env = Environment(envDict.get('_id'))
+                    env.load(envDict)
+                    yield env
 
-        if archivedEnvs == None:
-            archivedEnvs = dict()      
+    def archive(self, dbManager : MongoDBManager, envId: str):
+        env = self.getEnvironmentFromId(envId)
+        if not env:
+            return
+        
+        envState = env.getStateDict()
+        dbManager.db[Keys.ARCHIVED_ENV_COLLECTION].replace_one({"_id": envId}, envState, upsert=True)
 
-        archivedEnvs[environment.uniqueEnvironmentId] = envState
-        dbManager.db[Keys.STATE_COLLECTION].replace_one({"_id": Keys.ARCHIVED_ENVIRONMENTS_ID}, {"environments": archivedEnvs}, upsert=True)
-
-    def updateState(self):
-        self.loadFromDatabase()
+        self.delete(envId)
 
     def shutdown(self):
-        if self.changeConsumer:
-            self.changeConsumer.stop()
-            try:
-                if self._changePublisher and not self._changePublisher.connection.is_closed:
-                    self._changePublisher.connection.close()
-            except:
-                pass
+        pass
