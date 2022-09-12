@@ -5,12 +5,13 @@ import socket
 import logging
 import json
 import traceback
+import typing
 
 class TaskProcessor(JsonSocket):
     def __init__(self, socketTimeout=None):
         super().__init__(socketTimeout)
         self.logger = logging.getLogger(__name__)
-        self.taskPickers = []
+        self.taskPickers: typing.List[TaskPicker] = []
 
     def addTaskPicker(self, taskPicker : TaskPicker):
         self.taskPickers.append(taskPicker)
