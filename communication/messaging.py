@@ -1,6 +1,5 @@
 from typing import Callable
 import pika
-from concurrent.futures import ThreadPoolExecutor
 import threading
 from MetadataManagerCore import config
 from pika.adapters.blocking_connection import BlockingChannel

@@ -108,8 +108,8 @@ class HostProcessController(object):
             self.logger.error(str(e))
 
         self.thisHost.shutdown()
+        self.logger.info('Waiting for thread termination.')
         self.threadPoolExecutor.shutdown(True)
-
         self.logger.info('Shut down.')
 
     def checkProcessInfo(self, processInfo):

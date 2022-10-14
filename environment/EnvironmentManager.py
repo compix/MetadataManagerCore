@@ -1,9 +1,7 @@
 import typing
-from MetadataManagerCore.communication.messaging import FanoutPublisher, MessengerConsumerThread
 from MetadataManagerCore.environment.Environment import Environment
 from MetadataManagerCore.mongodb_manager import MongoDBManager
 from MetadataManagerCore import Keys
-from typing import List
 from MetadataManagerCore.Event import Event
 import logging
 

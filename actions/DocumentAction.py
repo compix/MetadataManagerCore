@@ -13,5 +13,9 @@ class DocumentAction(Action):
         pass
 
     @property
+    def askForConfirmation(self) -> bool:
+        return True
+        
+    @property
     def actionType(self):
         return ActionType.DocumentAction

@@ -37,6 +37,9 @@ class MongoDBManager:
         self.client.server_info()
         self.db = self.client[self.databaseName]
 
+    def disconnect(self):
+        self.client.close()
+
     # entry: dictionary
     def insertOne(self, collectionName, entry : dict):
         self.db[collectionName].insert_one(entry)

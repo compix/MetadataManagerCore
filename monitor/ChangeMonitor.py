@@ -1,6 +1,9 @@
 import time
 import threading
 from abc import ABC, abstractmethod
+import logging
+
+logger = logging.get(__name__)
 
 class ChangeMonitor(ABC):
     def __init__(self) -> None:
