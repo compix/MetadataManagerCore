@@ -17,6 +17,10 @@ def replaceGermanCharacters(input: str):
 
 def winapi_path(filepath: str):
     path = os.path.abspath(filepath)
+
+    if path.startswith(u"\\\\?"):
+        return path
+        
     if path.startswith(u"\\\\"):
         return u"\\\\?\\UNC\\" + path[2:]
         
