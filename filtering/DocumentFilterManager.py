@@ -91,7 +91,10 @@ class DocumentFilterManager(object):
         if filters == None:
             filters = []
 
-        filters = filters + self.collectionToFiltersDict.get(collectionName, [])
+        collectionFilters = self.collectionToFiltersDict.get(collectionName, [])
+        for f in collectionFilters:
+            if not f in filters:
+                filters.append(f)
 
         for filter in filters:
             filter.preApply()
